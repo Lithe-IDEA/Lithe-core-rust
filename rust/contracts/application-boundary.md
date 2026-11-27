@@ -535,44 +535,19 @@ application DOM as executable markup. Rendering and resizable layout are owned
 by the platform. The behavior fixture is
 [`svg-preview-v1.json`](../fixtures/editor/svg-preview-v1.json).
 
-### Optional PHP support
+## Plugin installation and lifecycle
 
-PHP plugin installation is explicit. The base application ships neither a PHP
-package nor Node/Bun/Intelephense. macOS installs the Lithe Store package
-`io.github.lithe-idea.php-support` through plugin management; the package does not
-bundle Intelephense, which the user installs, and its tools are user-owned and
-never deleted by Lithe.
-Windows installs language tools only on an explicit install/repair action; its
-managed tool cache is removed on uninstall without touching global tools. PHP
-run/test discovery and launch require enabled support. Disable cancels installation,
-stops in-flight and active owned processes, and unregisters providers; closing a
-workspace stops that workspace's PHP Run sessions. Shared lexical PHP recognition
-may remain available without spawning processes or downloading dependencies.
+Plugin installation is subject to explicit user approval. Installed packages
+are read-only. The host activates extensions from enabled plugins and applies
+the permission and workspace trust rules in the
+[plugin contract](../../shared/plugins/contract/v1/README.md#workspace-trust).
 
-Windows optional language implementations are single-module worker packages
-(`lithe-worker-plugin`, format version 1). PHP configuration and Composer/PHPUnit
-plan generation live in `Plugins/win/Official/PhpSupport`; application builds must
-not import that implementation, even through a dynamic import. The inert optional
-language catalog may identify package ownership without carrying executable code.
-
-A user imports a `.lithe-extension` file through extension management. The package
-contains a validated manifest and ESM source (maximum 256 KiB), stored atomically in
-the WebView user profile under `lithe.worker-package:<id>`. Import installs language
-tools but leaves the plugin disabled; enabling starts the existing worker host.
-Incomplete installation is not restored on restart. Uninstall removes the source,
-parser cache and owned tools; the application installation directory stays read-only.
-Local packages are user-selected code, not authenticated official downloads.
-
-The v1 language package accepts `languages`, `lsp`, and `runActions` declarations;
-other host permissions and contributions are not granted. `lsp.requiredExecutables`
-is passed to the native tool adapter for PATH validation. `runActions.manifestFiles`
-contains at most 16 root-level file names; `executables` names allowed PATH commands.
-The worker's `api.runActions.register` receives file contents and returns bounded
-plans (`id`, `name`, `sourceLabel`, optional `description`, `executable`, `arguments`).
-Only a user click launches a validated plan through the host Run service after saving
-the workspace. Workers never own the native process handles; the host tracks both
-extension ID and workspace ID, stops pending and active runs on disable/close, and
-rejects stale discovery results. Remote/WSL projects do not use these local plans.
+The host manages plugin sessions and processes. Disabling a plugin withdraws
+its contributions and stops its sessions. Closing a workspace stops the
+sessions scoped to it. Uninstall deactivates the plugin before removing its
+package and host-managed plugin state. Tools installed and owned by the user
+stay in place. See the
+[plugin lifecycle guide](../../shared/plugins/guides/lsp-plugin-lifecycle.md#7-treat-stop-failure-and-uninstall-as-acceptance-criteria).
 
 ## Text content and language selection
 

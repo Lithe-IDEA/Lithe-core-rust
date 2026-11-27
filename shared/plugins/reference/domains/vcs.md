@@ -4,7 +4,7 @@
 
 ## 中文
 
-插件可以为 Git 以外的版本控制系统（第一个是 Subversion）实现一个提供者。提供者是一个 LSP 基础协议进程，和[构建提供者](build-providers.md)同类，回答统一 VCS 模型的请求：根目录、文件状态、基准内容、历史、注解、提交、回滚、更新。版本控制界面、差异视图、提交窗口都归宿主；界面按提供者协商的能力决定显示什么，从不按 VCS 名字分支。Git 由内置支持负责，ID `git` 保留。
+插件可以为 Git 以外的版本控制系统实现一个提供者。提供者是一个 LSP 基础协议进程，和[构建提供者](build-providers.md)同类，回答统一 VCS 模型的请求：根目录、文件状态、基准内容、历史、注解、提交、回滚、更新。版本控制界面、差异视图、提交窗口都归宿主；界面按提供者协商的能力决定显示什么，从不按 VCS 名字分支。Git 由内置支持负责，ID `git` 保留。
 
 | 项目 | 内容 |
 | --- | --- |
@@ -13,7 +13,7 @@
 | 协议 | `litheVcs` 0：宿主在 `initialize` 里提供 `capabilities.experimental.litheVcs: {"versions": [0]}`，提供者回答 `{"version": 0, "vcs", "capabilities"}`，见[进程协议版本](../capabilities-and-versions.md#进程协议版本) |
 | API 编号 | [API-31](../api-catalog.md#现在能用的-api)：VCS 提供者。读取内置 Git 的公共接口是另一项（API-42，计划中） |
 | 权限 | `process.vcs`、`languageServer.launch` |
-| 激活事件 | `onVcsRoot:<id>`；根目录检测只看标记文件，不启动进程，找到该 VCS 的根目录后才启动提供者。目录标记（如 `.svn`）是 VCS 元数据，插件启用期间所有工作区都会隐藏，Search Everywhere 也不列出其中的文件名 |
+| 激活事件 | `onVcsRoot:<id>`；根目录检测只看标记文件，不启动进程，找到该 VCS 的根目录后才启动提供者。目录标记是 VCS 元数据，插件启用期间所有工作区都会隐藏，Search Everywhere 也不列出其中的文件名 |
 | Lithe 桌面端 | 未声明 `vcsProviders`，安装时拒绝需要它的包 |
 | 官方 SDK | [Node SDK](../../sdk/node/README.md#a-vcs-provider) 0.5.0 实现 `litheVcs` 0；Java、Rust、Go SDK 不实现 |
 
@@ -40,15 +40,15 @@
 | 章节 | 内容 |
 | --- | --- |
 | [VCS providers](../../contract/v1/README.md#vcs-providers) | 清单字段、保留 ID、检测、安装审查 |
-| [VCS provider contract](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md) | 字段、Core 命令、协商、回复格式、提供者消息、错误码、Subversion 说明 |
+| [VCS provider contract](../../../../rust/contracts/vcs-provider-v1.md) | 字段、Core 命令、协商、回复格式、提供者消息、错误码 |
 
 ### 示例与用例
 
 | 文件 | 内容 |
 | --- | --- |
-| [`vcs/vcs-provider.plugin.json`](../../contract/v1/fixtures/vcs/vcs-provider.plugin.json) | Subversion 提供者：`.svn` 目录标记、监视 `.svn/wc.db`、`svn` 客户端、Node 运行时启动、`mayUseNetwork` |
+| [`vcs/vcs-provider.plugin.json`](../../contract/v1/fixtures/vcs/vcs-provider.plugin.json) | 合成清单，演示目录标记、元数据监视、客户端工具、Node 运行时启动和网络声明 |
 
-共享示例里没有 VCS 拒绝用例；错误码（包括 `plugin.vcs.reserved`）见 VCS 契约的 [Error codes](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md#error-codes)。
+共享示例里没有 VCS 拒绝用例；错误码（包括 `plugin.vcs.reserved`）见 VCS 契约的 [Error codes](../../../../rust/contracts/vcs-provider-v1.md#error-codes)。
 
 ### 相关指南
 
@@ -58,7 +58,7 @@
 
 ## English
 
-A plugin can implement a provider for a version control system other than Git (Subversion is the first). A provider is an LSP base-protocol process, the same kind as a [build provider](build-providers.md), and answers requests of one VCS-neutral model: roots, file status, base content, history, annotation, check-in, rollback, and update. The version control UI, diff views, and commit window belong to the host; the UI decides what to show from the capabilities the provider negotiated, never from the VCS name. Git is served by built-in support, and the ID `git` is reserved.
+A plugin can implement a provider for a version control system other than Git. A provider is an LSP base-protocol process, the same kind as a [build provider](build-providers.md), and answers requests of one VCS-neutral model: roots, file status, base content, history, annotation, check-in, rollback, and update. The version control UI, diff views, and commit window belong to the host; the UI decides what to show from the capabilities the provider negotiated. Git is served by built-in support, and the ID `git` is reserved.
 
 | Item | Value |
 | --- | --- |
@@ -67,7 +67,7 @@ A plugin can implement a provider for a version control system other than Git (S
 | Protocols | `litheVcs` 0: the host offers `capabilities.experimental.litheVcs: {"versions": [0]}` in `initialize`, and the provider answers `{"version": 0, "vcs", "capabilities"}`; see [process protocol versions](../capabilities-and-versions.md#process-protocol-versions) |
 | API IDs | [API-31](../api-catalog.md#apis-usable-now): VCS providers. Public reads of the built-in Git are a separate item (API-42, planned) |
 | Permissions | `process.vcs`, `languageServer.launch` |
-| Activation events | `onVcsRoot:<id>`; root detection reads marker files only and starts no process, and a provider starts only after a root of its VCS is found. Directory markers, such as `.svn`, are VCS metadata: every workspace hides them while the plugin is enabled, and Search Everywhere never lists their file names |
+| Activation events | `onVcsRoot:<id>`; root detection reads marker files only and starts no process, and a provider starts only after a root of its VCS is found. Directory markers are VCS metadata. Every workspace hides them while the plugin is enabled, and Search Everywhere omits their files |
 | Lithe desktop | Does not declare `vcsProviders`; packages that require it are refused before installation |
 | Official SDKs | The [Node SDK](../../sdk/node/README.md#a-vcs-provider) 0.5.0 implements `litheVcs` 0; the Java, Rust, and Go SDKs do not |
 
@@ -94,15 +94,15 @@ A reply with a path outside the root, a missing required field, or an exceeded s
 | Section | Content |
 | --- | --- |
 | [VCS providers](../../contract/v1/README.md#vcs-providers) | Manifest fields, the reserved ID, detection, install review |
-| [VCS provider contract](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md) | Fields, Core commands, negotiation, reply shapes, provider messages, error codes, Subversion notes |
+| [VCS provider contract](../../../../rust/contracts/vcs-provider-v1.md) | Fields, Core commands, negotiation, reply shapes, provider messages, and error codes |
 
 ### Examples and cases
 
 | File | Content |
 | --- | --- |
-| [`vcs/vcs-provider.plugin.json`](../../contract/v1/fixtures/vcs/vcs-provider.plugin.json) | A Subversion provider: a `.svn` directory marker, watching `.svn/wc.db`, the `svn` client, a Node runtime launch, `mayUseNetwork` |
+| [`vcs/vcs-provider.plugin.json`](../../contract/v1/fixtures/vcs/vcs-provider.plugin.json) | A synthetic manifest showing a directory marker, metadata watching, a client tool, a Node runtime launch, and a network-use declaration |
 
-The shared fixtures have no VCS refusal cases; the error codes (including `plugin.vcs.reserved`) are in [Error codes](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md#error-codes) of the VCS contract.
+The shared fixtures have no VCS refusal cases; the error codes (including `plugin.vcs.reserved`) are in [Error codes](../../../../rust/contracts/vcs-provider-v1.md#error-codes) of the VCS contract.
 
 ### Related guides
 

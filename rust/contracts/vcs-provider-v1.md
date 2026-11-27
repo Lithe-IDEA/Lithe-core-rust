@@ -12,14 +12,13 @@ This contract defines one VCS-neutral model for the features every version
 control system has: roots, file status, base content, history, annotation,
 check-in, rollback, and update. A **provider** implements it for one VCS as a
 plugin process speaking the LSP base protocol, the same process kind as
-[build providers](../../shared/plugins/contract/v1/README.md#build-providers). Subversion is the
-first provider.
+[build providers](../../shared/plugins/contract/v1/README.md#build-providers).
+The examples below use a fictional provider named Sample VCS.
 
 Git is not part of this layer yet. Core recognizes `.git` markers so a nested
 working copy is assigned to the right root, and the `git.*` commands keep
-serving Git roots unchanged. Features that only exist in one VCS (Git log
-graph, rebase, worktrees, stash; Subversion locks, properties, relocate) are
-not modeled here.
+serving Git roots unchanged. VCS-specific operations are outside the shared
+model.
 
 ## Shared rules
 
@@ -42,15 +41,15 @@ not modeled here.
   "requires": { "vcsProviders": 0 },
   "requiresTools": ["node"],
   "permissions": ["languageServer.launch", "process.vcs"],
-  "activationEvents": ["onVcsRoot:svn"],
+  "activationEvents": ["onVcsRoot:sample-vcs"],
   "vcsProviders": [
     {
-      "id": "svn",
-      "displayName": "Subversion",
-      "detection": { "markers": [{ "name": ".svn", "type": "directory" }] },
-      "metadataPaths": [".svn/wc.db"],
-      "tool": { "commands": ["svn"], "validationArguments": ["--version", "--quiet"] },
-      "launch": { "kind": "runtime", "tool": "node", "minimumVersion": "20.3", "entry": "provider/main.mjs" },
+      "id": "sample-vcs",
+      "displayName": "Sample VCS",
+      "detection": { "markers": [{ "name": ".sample-vcs", "type": "directory" }] },
+      "metadataPaths": [".sample-vcs/index"],
+      "tool": { "commands": ["sample-vcs"], "validationArguments": ["--version"] },
+      "launch": { "kind": "runtime", "tool": "node", "minimumVersion": "22.0", "entry": "provider/main.mjs" },
       "arguments": ["--stdio"],
       "mayUseNetwork": true
     }
@@ -88,12 +87,12 @@ the process and adds `vcsProvider`, the descriptor below.
 
 ```json
 {
-  "vcs": "svn",
-  "displayName": "Subversion",
-  "origin": { "kind": "plugin", "pluginID": "io.github.lithe-idea.svn-support" },
-  "markers": [{ "name": ".svn", "type": "directory" }],
-  "metadataPaths": [".svn/wc.db"],
-  "tool": { "commands": ["svn"], "validationArguments": ["--version", "--quiet"] },
+  "vcs": "sample-vcs",
+  "displayName": "Sample VCS",
+  "origin": { "kind": "plugin", "pluginID": "dev.lithe.test.sample-vcs" },
+  "markers": [{ "name": ".sample-vcs", "type": "directory" }],
+  "metadataPaths": [".sample-vcs/index"],
+  "tool": { "commands": ["sample-vcs"], "validationArguments": ["--version"] },
   "mayUseNetwork": true
 }
 ```
@@ -116,7 +115,7 @@ The built-in Git entry is `{ vcs: "git", displayName: "Git", origin: { kind:
 {
   "workspaceRoot": "/abs/workspace",
   "plugins": [{ "manifest": { } }],
-  "mappings": [{ "id": "mixed", "vcs": "svn" }]
+  "mappings": [{ "id": "mixed", "vcs": "sample-vcs" }]
 }
 ```
 
@@ -131,8 +130,8 @@ call.
   "status": "ok",
   "detection": {
     "providers": [ ],
-    "roots": [{ "id": "services/legacy", "vcs": "svn", "path": "/abs/workspace/services/legacy", "mapped": false }],
-    "ambiguous": [{ "id": "mixed", "vcs": ["git", "svn"] }],
+    "roots": [{ "id": "services/legacy", "vcs": "sample-vcs", "path": "/abs/workspace/services/legacy", "mapped": false }],
+    "ambiguous": [{ "id": "mixed", "vcs": ["git", "sample-vcs"] }],
     "unusedMappings": [],
     "truncated": false,
     "rejected": [],
@@ -143,13 +142,13 @@ call.
 
 Roots come from static markers; detection never starts a process. One
 breadth-first walk reads the markers directly inside each directory down to
-eight levels below the workspace, at most 20,000 directories. It never enters a
-marker directory (`.git`, `.svn`), a symbolic link, or a folder the default
-visibility rules hide: Core's `.worktree` and `.worktrees` and the folder names
-enabled plugins declare through `workspace.configureVisibility`, such as a build
-system's `target`. When the workspace
-itself has no marker, its ancestors are checked, because a Subversion working
-copy has one `.svn` at its top; the enclosing root's `id` is `..`, `../..`, ….
+eight levels below the workspace, at most 20,000 directories. It skips marker
+directories, symbolic links, and folders the default visibility rules hide.
+These include Core's `.worktree` and `.worktrees` and folders enabled plugins
+declare through `workspace.configureVisibility`, such as a build system's
+`target`. When the workspace itself has no marker, Core also checks its
+ancestors for a working copy that encloses the workspace. The enclosing root's
+`id` is `..`, `../..`, ….
 `truncated` is `true` only when the directory budget ran out, so a root may be
 missing.
 
@@ -175,11 +174,11 @@ directory it belongs to no root (`null`), not to an enclosing one. At most
 {
   "sessionId": "…",
   "operationId": "…",
-  "vcs": "svn",
+  "vcs": "sample-vcs",
   "operation": "checkin",
   "root": "/abs/workspace/services/legacy",
-  "tool": "/opt/homebrew/bin/svn",
-  "arguments": { "paths": ["src/Main.java"], "message": "Fix" },
+  "tool": "/usr/local/bin/sample-vcs",
+  "arguments": { "paths": ["src/main.txt"], "message": "Fix" },
   "timeoutMilliseconds": 600000
 }
 ```
@@ -217,7 +216,7 @@ Core adds `root: { path }` and `tool: { executable } | null` to the params.
 The provider receives, for example:
 
 ```json
-{ "paths": ["src/Main.java"], "message": "Fix", "root": { "path": "/abs/…/legacy" }, "tool": { "executable": "/opt/homebrew/bin/svn" } }
+{ "paths": ["src/main.txt"], "message": "Fix", "root": { "path": "/abs/workspace/services/legacy" }, "tool": { "executable": "/usr/local/bin/sample-vcs" } }
 ```
 
 ### `vcs.decodeReply`
@@ -238,7 +237,7 @@ The host offers `capabilities.experimental.litheVcs: { "versions": [0] }` in
 `vcsProviders` capability version. The provider answers:
 
 ```json
-{ "litheVcs": { "version": 0, "vcs": "svn", "capabilities": { "status": 0, "baseContent": 0, "checkin": 0, "rollback": 0, "update": 0 } } }
+{ "litheVcs": { "version": 0, "vcs": "sample-vcs", "capabilities": { "status": 0, "baseContent": 0, "checkin": 0, "rollback": 0, "update": 0 } } }
 ```
 
 A session is a provider only when the answer names an offered version, a valid
@@ -287,9 +286,9 @@ unchanged.
 
 ```json
 {
-  "head": { "revision": { "id": "1234", "display": "r1234", "kind": "number" }, "branch": null, "location": "https://svn.example.invalid/repo/trunk" },
+  "head": { "revision": { "id": "1234", "display": "r1234", "kind": "number" }, "branch": null, "location": "https://vcs.example.invalid/repo/trunk" },
   "changes": [
-    { "path": "src/Main.java", "oldPath": null, "status": "modified", "flags": ["locked", "propertiesModified"] }
+    { "path": "src/main.txt", "oldPath": null, "status": "modified", "flags": ["locked", "propertiesModified"] }
   ],
   "truncated": false
 }
@@ -358,12 +357,3 @@ A provider reports its code in the JSON-RPC `error.data.code`. Core keeps only
 the provider codes listed here; any other code, including Core's own, becomes
 `vcs.provider.failed`. The provider's message (at most 4 KiB) is passed on and
 must not contain credentials.
-
-## Subversion provider notes
-
-Subversion is provided by the plugin
-[lithe-plugin-svn](https://github.com/Lithe-IDEA/lithe-plugin-svn)
-(`io.github.lithe-idea.svn-support`), released independently of Lithe. It calls
-the user's `svn` client, 1.8 or newer, and parses its `--xml` output. Its README
-documents how each operation maps to svn and how svn errors map to contract
-codes; its tests check those replies against a pinned Lithe Core.
