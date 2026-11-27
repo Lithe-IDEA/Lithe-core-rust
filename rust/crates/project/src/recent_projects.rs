@@ -23,6 +23,8 @@ const MAX_PATH_BYTES: usize = 4096;
 const MAX_TAGS: usize = 16;
 const MAX_TAG_BYTES: usize = 64;
 const MAX_REMOTE_ID_BYTES: usize = 1024;
+// The generated key also includes the length prefix: "remote:1024:" at most.
+const MAX_RECENT_KEY_BYTES: usize = "remote:1024:".len() + MAX_REMOTE_ID_BYTES + MAX_PATH_BYTES;
 
 /// One retained project identity. `path` is the host's normalized root path
 /// and is compared byte for byte; `lastOpenedAt` is milliseconds since the
@@ -207,6 +209,9 @@ pub struct RecentProjectsResponse {
     /// Distinct category names across the supplied list, present only for a filter.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+    /// Current display spelling of the requested tag, when that tag still exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_tag: Option<String>,
 }
 
 /// JSON entry point for `workspace.recentProjects.reduce`.
@@ -230,7 +235,6 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
         return Err(invalid("Too many recent projects"));
     }
     for entry in &request.entries {
-        validate_path(&entry.path)?;
         validate_time(entry.last_opened_at)?;
         validate_tags(&entry.tags)?;
         if let Some(remote) = &entry.remote {
@@ -238,6 +242,8 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
             if entry.path != remote_identity(remote) {
                 return Err(invalid("Remote project identity does not match its route"));
             }
+        } else {
+            validate_path(&entry.path)?;
         }
     }
 
@@ -261,32 +267,36 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
             record(&mut entries, path, opened_at, Some(remote));
         }
         RecentProjectsAction::SetTags { path, tags } => {
-            validate_path(&path)?;
+            validate_recent_key(&path)?;
             let tags = normalize_tags(tags)?;
             if let Some(entry) = entries.iter_mut().find(|entry| entry.path == path) {
                 entry.tags = tags;
             }
         }
         RecentProjectsAction::Remove { paths } => {
-            validate_paths(&paths)?;
+            validate_path_count(&paths)?;
+            paths
+                .iter()
+                .try_for_each(|path| validate_recent_key(path))?;
             let removed: HashSet<&str> = paths.iter().map(String::as_str).collect();
             entries.retain(|entry| !removed.contains(entry.path.as_str()));
         }
         RecentProjectsAction::TogglePinned { path } => {
-            validate_path(&path)?;
+            validate_recent_key(&path)?;
             if let Some(index) = entries.iter().position(|entry| entry.path == path) {
                 let pinned = !entries[index].pinned;
                 set_pinned(&mut entries, index, pinned);
             }
         }
         RecentProjectsAction::SetPinned { path, pinned } => {
-            validate_path(&path)?;
+            validate_recent_key(&path)?;
             if let Some(index) = entries.iter().position(|entry| entry.path == path) {
                 set_pinned(&mut entries, index, pinned);
             }
         }
         RecentProjectsAction::Import { paths, opened_at } => {
-            validate_paths(&paths)?;
+            validate_path_count(&paths)?;
+            paths.iter().try_for_each(|path| validate_path(path))?;
             validate_time(opened_at)?;
             let mut known: HashSet<String> = entries.iter().map(|e| e.path.clone()).collect();
             let mut offset = 0;
@@ -343,6 +353,7 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
         removed,
         visible: None,
         tags: None,
+        selected_tag: None,
     })
 }
 
@@ -375,6 +386,7 @@ fn record(
     remote: Option<RecentRemoteProject>,
 ) {
     let mut entry = match entries.iter().position(|entry| entry.path == path) {
+        Some(index) if entries[index].last_opened_at > opened_at => return,
         Some(index) => entries.remove(index),
         None => RecentProjectEntry {
             path,
@@ -415,12 +427,14 @@ fn filter(entries: Vec<RecentProjectEntry>, query: &str, tag: &str) -> RecentPro
             visible.push(index);
         }
     }
+    let selected_tag = tags.get(&tag).cloned();
     RecentProjectsResponse {
         entries: Vec::new(),
         added: Vec::new(),
         removed: Vec::new(),
         visible: Some(visible),
         tags: Some(tags.into_values().collect()),
+        selected_tag,
     }
 }
 
@@ -446,7 +460,7 @@ fn validate_remote(remote: &RecentRemoteProject) -> Result<(), CoreError> {
     {
         return Err(invalid("Remote project route is invalid"));
     }
-    validate_path(&remote_identity(remote))
+    validate_path(&remote.folder)
 }
 
 fn normalize_tags(tags: Vec<String>) -> Result<Vec<String>, CoreError> {
@@ -506,15 +520,28 @@ fn order_and_limit(entries: Vec<RecentProjectEntry>, capacity: usize) -> Vec<Rec
     pinned
 }
 
-fn validate_paths(paths: &[String]) -> Result<(), CoreError> {
+fn validate_path_count(paths: &[String]) -> Result<(), CoreError> {
     if paths.len() > MAX_ACTION_PATHS {
         return Err(invalid("Too many recent project paths"));
     }
-    paths.iter().try_for_each(|path| validate_path(path))
+    Ok(())
+}
+
+fn validate_recent_key(path: &str) -> Result<(), CoreError> {
+    let limit = if path.starts_with("remote:") {
+        MAX_RECENT_KEY_BYTES
+    } else {
+        MAX_PATH_BYTES
+    };
+    validate_path_with_limit(path, limit)
 }
 
 fn validate_path(path: &str) -> Result<(), CoreError> {
-    if path.is_empty() || path.len() > MAX_PATH_BYTES || path.contains('\0') {
+    validate_path_with_limit(path, MAX_PATH_BYTES)
+}
+
+fn validate_path_with_limit(path: &str, limit: usize) -> Result<(), CoreError> {
+    if path.is_empty() || path.len() > limit || path.contains('\0') {
         return Err(invalid("Recent project path is invalid"));
     }
     Ok(())

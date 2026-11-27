@@ -2185,6 +2185,34 @@ fn recent_projects_default_capacity_keeps_the_newest_unpinned_projects() {
     assert_eq!(response["data"]["removed"], serde_json::json!(["/p0"]));
 }
 
+#[test]
+fn recent_project_remote_key_can_include_the_full_remote_path() {
+    use serde_json::json;
+
+    let folder = format!("/{}", vec!["a".repeat(255); 16].join("/"));
+    assert_eq!(folder.len(), 4096);
+    let recorded = call(
+        "workspace.recentProjects.reduce",
+        json!({"entries": [], "action": {"kind": "recordRemote", "openedAt": 1,
+            "remote": {"connectionId": "saved-demo", "sshConnectionId": "saved-demo",
+                "name": "Synthetic host", "folder": folder}}}),
+    );
+    assert_eq!(recorded["ok"], true, "{recorded}");
+    let entries = &recorded["data"]["entries"];
+    let key = &entries[0]["path"];
+    assert!(key.as_str().unwrap().len() > 4096);
+    let pinned = call(
+        "workspace.recentProjects.reduce",
+        json!({"entries": entries, "action": {"kind": "setPinned", "path": key, "pinned": true}}),
+    );
+    assert_eq!(pinned["data"]["entries"][0]["pinned"], true, "{pinned}");
+    let removed = call(
+        "workspace.recentProjects.reduce",
+        json!({"entries": &pinned["data"]["entries"], "action": {"kind": "remove", "paths": [key]}}),
+    );
+    assert_eq!(removed["data"]["entries"], json!([]), "{removed}");
+}
+
 fn hex_bytes(hex: &str) -> Vec<u8> {
     (0..hex.len())
         .step_by(2)

@@ -156,6 +156,36 @@
       }
     },
     {
+      "name": "a stale local open keeps the newer time",
+      "request": {
+        "entries": [
+          { "path": "/work/alpha", "lastOpenedAt": 300 }
+        ],
+        "action": { "kind": "record", "path": "/work/alpha", "openedAt": 100 }
+      },
+      "expected": {
+        "entries": [{ "path": "/work/alpha", "lastOpenedAt": 300, "pinned": false }],
+        "added": [],
+        "removed": []
+      }
+    },
+    {
+      "name": "a stale remote open keeps the newest reported connection name",
+      "request": {
+        "entries": [
+          { "path": "remote:4:east/repo", "lastOpenedAt": 300, "remote": { "connectionId": "east", "name": "Current name", "folder": "/repo", "sshConnectionId": "east" } }
+        ],
+        "action": { "kind": "recordRemote", "openedAt": 100, "remote": { "connectionId": "east", "name": "Earlier name", "folder": "/repo", "sshConnectionId": "east" } }
+      },
+      "expected": {
+        "entries": [
+          { "path": "remote:4:east/repo", "lastOpenedAt": 300, "pinned": false, "remote": { "connectionId": "east", "name": "Current name", "folder": "/repo", "sshConnectionId": "east" } }
+        ],
+        "added": [],
+        "removed": []
+      }
+    },
+    {
       "name": "tag and text filters compose across local and remote projects",
       "request": {
         "entries": [
@@ -170,7 +200,8 @@
         "added": [],
         "removed": [],
         "visible": [1],
-        "tags": ["Docs", "Remote", "Research"]
+        "tags": ["Docs", "Remote", "Research"],
+        "selectedTag": "Docs"
       }
     },
     {

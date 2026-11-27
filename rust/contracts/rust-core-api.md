@@ -951,7 +951,8 @@ returns `{ entries, added, removed }`. A local entry has its normalized root
 `path`, `lastOpenedAt` in Unix milliseconds (missing means oldest) and
 `pinned`. Optional entry fields are `pinOrder`, `tags`, and `remote`.
 The host treats remote `path` as opaque. Core derives it from the full
-transport identity and the absolute POSIX folder. A `remote` record includes
+transport identity (up to 1024 UTF-8 bytes) and the absolute POSIX folder (up to
+4096 UTF-8 bytes). The derived key may be longer than a local path. A `remote` record includes
 `connectionId`, `name`, `folder`, and a combination of `sshConnectionId`, `wsl`
 (distribution and optional user), and `container` (engine, identifier,
 optional context and user). SSH records refer to the saved connection by ID.
@@ -964,7 +965,8 @@ Authentication settings and session tokens stay in their existing stores.
 `importEntries { entries: [{ path, lastOpenedAt }] }`, `normalize`, or
 `filter { query, tag }`. Setting a pin to its current state preserves its rank. Explicit pins sort by descending pin order. Existing
 pins without one keep their recency order after explicit pins. Reopening
-preserves pin order and tags. Setting tags trims and deduplicates labels
+preserves pin order and tags, and an older open event cannot replace a newer
+open time or its remote route. Setting tags trims and deduplicates labels
 case-insensitively and supports clearing them with an empty array. At most 16
 non-empty, comma-free labels of up to 64 UTF-8 bytes each are retained per
 entry. Importing dated local entries preserves metadata already in the list.
@@ -972,7 +974,8 @@ entry. Importing dated local entries preserves metadata already in the list.
 The filter is read-only and returns `visible` offsets into the supplied entries
 and the distinct `tags` across the entire list. It combines a case-insensitive
 substring of path, connection display name, or tags with an optional
-case-insensitive exact tag. With a filter, `entries`, `added`, and `removed`
+case-insensitive exact tag. If the requested tag exists, `selectedTag` returns
+its current display spelling even when the text query matches no rows. With a filter, `entries`, `added`, and `removed`
 are empty.
 
 Core keeps the newest record of duplicated paths, sorts unpinned projects by
