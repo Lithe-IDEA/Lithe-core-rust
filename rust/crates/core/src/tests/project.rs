@@ -477,9 +477,15 @@ fn workspace_snapshot_without_tree_keeps_the_same_file_list() {
 
 #[test]
 fn list_directories_marks_only_visibly_empty_directories_as_leaves() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/workspace/directory-listing-leaves-v1.json"
+    ))
+    .unwrap();
     let root = temporary_root("directory-leaves");
-    fs::create_dir_all(root.join("logs")).unwrap();
-    fs::create_dir_all(root.join("parent/empty")).unwrap();
+    let _cleanup = super::support::Cleanup(root.clone());
+    for dir in fixture["directories"].as_array().unwrap() {
+        fs::create_dir_all(root.join(dir.as_str().unwrap())).unwrap();
+    }
     write_fixture_file(&root.join("hidden-only/ignored.tmp"), "");
     let data = core_data(
         "directory-leaves",
@@ -489,7 +495,7 @@ fn list_directories_marks_only_visibly_empty_directories_as_leaves() {
         }),
     );
     let children = data["directories"][0]["children"].as_array().unwrap();
-    for name in ["logs", "hidden-only"] {
+    for name in ["empty", "hidden-only"] {
         let child = children.iter().find(|child| child["name"] == name).unwrap();
         assert_eq!(child["children"], serde_json::json!([]));
     }
@@ -498,7 +504,17 @@ fn list_directories_marks_only_visibly_empty_directories_as_leaves() {
         .find(|child| child["name"] == "parent")
         .unwrap();
     assert!(parent.get("children").is_none());
-    fs::remove_dir_all(root).unwrap();
+    let mut request = fixture["request"].clone();
+    request["root"] = serde_json::json!(root);
+    request["hiddenFilePatterns"] = serde_json::json!(["*.tmp"]);
+    let deferred = core_data("deferred-leaves", "workspace.listDirectories", request);
+    let listings = deferred["directories"].as_array().unwrap();
+    let expected = fixture["directoriesExpected"].as_array().unwrap();
+    assert_eq!(listings.len(), expected.len());
+    for (actual, expected) in listings.iter().zip(expected) {
+        assert_eq!(actual["path"], expected["path"]);
+        assert_eq!(actual["children"], expected["children"]);
+    }
 }
 
 #[test]

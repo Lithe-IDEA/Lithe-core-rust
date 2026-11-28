@@ -1,0 +1,19 @@
+{
+  "directories": ["empty", "hidden-only/.worktrees", "parent/child"],
+  "request": {"paths": ["", "hidden-only", "parent"], "deferEmptyCheck": true},
+  "directoriesExpected": [
+    {
+      "path": "",
+      "children": [
+        {"path": "empty", "name": "empty", "isDirectory": true},
+        {"path": "hidden-only", "name": "hidden-only", "isDirectory": true},
+        {"path": "parent", "name": "parent", "isDirectory": true}
+      ]
+    },
+    {"path": "hidden-only", "children": []},
+    {
+      "path": "parent",
+      "children": [{"path": "parent/child", "name": "child", "isDirectory": true}]
+    }
+  ]
+}
