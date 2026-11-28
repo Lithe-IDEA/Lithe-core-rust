@@ -660,7 +660,11 @@ and gives each call 10 seconds.
   `{format: "litheAgentConfigurationEdit", version: 0, changed}`. Core checks
   the staged copy and moves it into place; the backend never writes the real
   file.
-- Both need `agents.configuration`, and read only the paths Core passes.
+- Both need `agents.configuration`. `read` reads the declared files at the
+  paths Core passes, which may be staged copies, and may also read what the
+  CLI installed itself, such as its plugins, to report it with
+  `origin: "agent"`; it never opens credential files. `edit` writes only
+  the file at `staging`.
 
 ## Testing
 

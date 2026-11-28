@@ -63,7 +63,7 @@ const FUNCTION_TIMEOUT: Duration = Duration::from_secs(10);
 
 const MAX_SERVERS: usize = 256;
 const MAX_HOOKS: usize = 256;
-const MAX_HOOK_EVENTS: usize = 32;
+const MAX_HOOK_EVENTS: usize = 64;
 const MAX_EVENT_BYTES: usize = 64;
 const MAX_SKILLS: usize = 512;
 const MAX_NAME_CHARS: usize = 128;

@@ -4329,7 +4329,7 @@ for the file, with the same extension; `exists` says whether anything is at
   `provider` (1–128 characters) names and Lithe only shows;
 - `hooks`: at most 256 `{event, matcher?, command, timeoutSeconds?, origin,
   provider?}`;
-- `hookEvents`: at most 32 distinct events the CLI runs hooks for; empty
+- `hookEvents`: at most 64 distinct events the CLI runs hooks for; empty
   when the plugin does not say, and then every event is allowed;
 - `skills`: at most 512 `{name, description?, provider?}`, skills the CLI
   installed itself outside the skills directory, `description` at most 1024
