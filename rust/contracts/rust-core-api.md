@@ -633,7 +633,7 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.readDirectory` | Return one bounded no-follow disk directory page for API-06; see Workspace disk reads below |
 | `workspace.stat` | Stat a workspace leaf without following it or any ancestor link (API-06) |
 | `workspace.readFile` | Read at most 128 KiB of regular-file disk bytes without following links (API-06) |
-| `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, external/cyclic symlink, or nested-worktree paths are omitted; workspace-internal aliases are browsable and each listing reports `linked: true` when reached through an alias, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
+| `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, external/cyclic symlink, or nested-worktree paths are omitted; workspace-internal aliases are browsable and each listing reports `linked: true` when reached through an alias, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. With `deferEmptyCheck: true`, every child directory is returned unloaded and its empty state is resolved when the host requests its own listing. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
 | `workspace.orderEntries` | Order natively enumerated directory siblings |
 | `workspace.projectTree.rows` | Say which loaded project tree nodes show as rows, keep the selection on a row that shows, and find the row the top of the view was on, without reading the disk (from `lithe-project-tree`) |
 | `workspace.rowSelection.reduce` | Apply one plain, Cmd/Ctrl or Shift click, or the end of a batch, to the multi-selection of rows of workspace paths and return what a batch acts on (from `lithe-row-selection`) |
@@ -1033,6 +1033,10 @@ sent. `targets` is what a batch acts on: the marked paths without those inside a
 marked folder, empty when nothing is marked. A marked or anchored root, more than
 2^20 rows or marks, and unknown fields or actions return `invalid_request`. See
 `rust/fixtures/workspace/row-selection-v1.json`.
+
+For `workspace.listDirectories`, `rust/fixtures/workspace/directory-listing-leaves-v1.json`
+shows the difference between an unloaded child in its parent's listing and the empty
+`children` array returned when that same directory is listed directly.
 
 `workspace.projectTree.rows` accepts `{ nodes, selection?, top? }` and returns
 `{ rows, selection, selectionMoved, topRow, targets }`. `nodes` are the project tree

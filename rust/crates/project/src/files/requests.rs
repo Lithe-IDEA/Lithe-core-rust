@@ -32,6 +32,10 @@ fn default_include_tree() -> bool {
 #[serde(rename_all = "camelCase")]
 /// Workspace-relative directories whose visible children a host is loading.
 pub struct DirectoryListingRequest {
+    /// Return unloaded child directories without probing each one for visible entries.
+    /// The desktop tree resolves the empty state when the user opens that directory.
+    #[serde(default)]
+    pub defer_empty_check: bool,
     /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Workspace-relative directories; an empty string is the root itself.

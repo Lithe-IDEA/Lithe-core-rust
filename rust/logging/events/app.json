@@ -145,6 +145,26 @@
       }
     },
     {
+      "id": "app.workspace.tree_expansion_limited",
+      "channel": "app",
+      "level": "warn",
+      "message": "Project tree expansion stopped at {limit} after scheduling {reads} directory reads",
+      "fields": {
+        "limit": {
+          "type": "token",
+          "required": true,
+          "description": "The read_limit or folder_limit reached during partial expansion"
+        },
+        "reads": {
+          "type": "int",
+          "required": true,
+          "description": "Number of directory reads requested by this Expand All action"
+        }
+      },
+      "rate": 60,
+      "owner": "Lithe"
+    },
+    {
       "id": "app.workspace.directory_skipped",
       "channel": "app",
       "level": "warn",

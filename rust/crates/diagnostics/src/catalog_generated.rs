@@ -550,6 +550,19 @@ pub static EVENTS: &[EventMetadata] = &[
         owner: "lithe-core",
     },
     EventMetadata {
+        id: "app.workspace.tree_expansion_limited",
+        channel: "app",
+        level: LogLevel::Warn,
+        message: "Project tree expansion stopped at {limit} after scheduling {reads} directory reads",
+        fields: &[
+            FieldMetadata { name: "limit", field_type: FieldType::Token, required: true, description: "The read_limit or folder_limit reached during partial expansion", reason: None },
+            FieldMetadata { name: "reads", field_type: FieldType::Int, required: true, description: "Number of directory reads requested by this Expand All action", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "Lithe",
+    },
+    EventMetadata {
         id: "debug.operation.cancelled",
         channel: "debug/{adapter}",
         level: LogLevel::Debug,
