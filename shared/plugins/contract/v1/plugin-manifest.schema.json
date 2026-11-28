@@ -10,6 +10,8 @@
     {"if": {"required": ["agents"]}, "then": {"required": ["permissions", "requiresTools"], "properties": {"requires": {"required": ["agents"]}, "permissions": {"contains": {"const": "agents.run"}}}}},
     {"if": {"required": ["agents"], "properties": {"agents": {"contains": {"required": ["native"]}}}}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["backend"]}, "permissions": {"contains": {"const": "agents.native"}}}}},
     {"if": {"required": ["agents"], "properties": {"agents": {"contains": {"required": ["sessionSources"]}}}}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["backend"]}, "permissions": {"contains": {"const": "agents.sessions.read"}}}}},
+    {"if": {"required": ["agents"], "properties": {"agents": {"contains": {"required": ["configuration"]}}}}, "then": {"properties": {"permissions": {"contains": {"const": "agents.configuration"}}}}},
+    {"if": {"required": ["agents"], "properties": {"agents": {"contains": {"required": ["configuration"], "properties": {"configuration": {"required": ["read"]}}}}}}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["backend"]}}}},
     {"if": {"required": ["permissions"], "properties": {"permissions": {"contains": {"const": "agents.usage.read"}}}}, "then": {"required": ["backend"]}},
     {"if": {"required": ["outputLinkMatchers"]}, "then": {"properties": {"requires": {"required": ["outputLinkMatchers"]}}}},
     {"if": {"required": ["toolDefinitions"]}, "then": {"properties": {"requires": {"required": ["toolDefinitions"]}}}},
@@ -107,13 +109,13 @@
           "languageServer.request",
           "documents.contentProvider",
           "documents.save",
-          "workspace.files.write", "window.input", "views.refresh", "output.write", "window.progress", "statusBar.write", "clipboard.read", "clipboard.write", "workspace.reveal", "workspace.directoryMarks", "network.request", "agents.run", "agents.native", "agents.sessions.read", "agents.usage.read"] }
+          "workspace.files.write", "window.input", "views.refresh", "output.write", "window.progress", "statusBar.write", "clipboard.read", "clipboard.write", "workspace.reveal", "workspace.directoryMarks", "network.request", "agents.run", "agents.native", "agents.sessions.read", "agents.usage.read", "agents.configuration"] }
     },
     "activationEvents": {
       "type": "array",
       "items": {
         "type": "string",
-        "description": "onWorkspaceOpen names no ID and needs requires.backend; it starts the backend once a workspace is open. onAgent:<id> starts the backend for an agent that declares native or sessionSources, and only for one.",
+        "description": "onWorkspaceOpen names no ID and needs requires.backend; it starts the backend once a workspace is open. onAgent:<id> starts the backend for an agent that declares native, sessionSources or a configuration with read, and only for one.",
         "pattern": "^((onLanguage|onRun|onTest|onView|onCommand|onBuildSystem|onVcsRoot|onDebug|onAgent):[a-z0-9.+_-]+|onWorkspaceOpen)$"
       }
     },
@@ -352,7 +354,7 @@
       }
     },
     "agent": {
-      "description": "One agent command-line tool. It declares at least one of native, acp and terminal. native and sessionSources are served by the plugin backend and need the activation event onAgent:<id>.",
+      "description": "One agent command-line tool. It declares at least one of native, acp and terminal. native, sessionSources and the read and edit of configuration are served by the plugin backend and need the activation event onAgent:<id>.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -444,6 +446,86 @@
           "items": {
             "$ref": "#/$defs/agentSessionSource"
           }
+        },
+        "configuration": {
+          "$ref": "#/$defs/agentConfiguration"
+        }
+      }
+    },
+    "agentConfiguration": {
+      "description": "Where the CLI keeps the instructions, skills, MCP servers and hooks Lithe's agent library manages. Core reads and changes them only for a change the user applies; needs agents.configuration. Declares at least one of instructions, skills and files; files and read come together, and edit needs read.",
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {"required": ["instructions"]},
+        {"required": ["skills"]},
+        {"required": ["files"], "properties": {"files": {"minItems": 1}}}
+      ],
+      "dependentRequired": {
+        "read": ["files"],
+        "edit": ["read"]
+      },
+      "if": {"required": ["files"], "properties": {"files": {"minItems": 1}}},
+      "then": {"required": ["read"]},
+      "else": {"properties": {"read": false}},
+      "properties": {
+        "instructions": {
+          "description": "The Markdown file the CLI reads as the user's own instructions. Core reads and writes it.",
+          "$ref": "#/$defs/agentConfigurationPath"
+        },
+        "skills": {
+          "description": "The directory of the CLI's user skills, one directory with a SKILL.md per skill. Core reads it and links library skills into it.",
+          "$ref": "#/$defs/agentConfigurationPath"
+        },
+        "files": {
+          "description": "Files in the CLI's own format that hold its MCP servers and hooks. Only the backend reads their format.",
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "roots"],
+            "properties": {
+              "id": {
+                "description": "Unique in the agent.",
+                "$ref": "#/$defs/agentID"
+              },
+              "roots": {
+                "$ref": "#/$defs/agentConfigurationRoots"
+              }
+            }
+          }
+        },
+        "read": {
+          "description": "Backend function that reports what files hold: {agentID, files: [{id, path, exists}]} to a litheAgentConfiguration answer.",
+          "$ref": "#/$defs/pluginFunctionID"
+        },
+        "edit": {
+          "description": "Backend function that applies one change to a staged copy of one file: {agentID, file: {id, staging, exists}, change} to a litheAgentConfigurationEdit answer.",
+          "$ref": "#/$defs/pluginFunctionID"
+        }
+      }
+    },
+    "agentConfigurationPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["roots"],
+      "properties": {
+        "roots": {
+          "$ref": "#/$defs/agentConfigurationRoots"
+        }
+      }
+    },
+    "agentConfigurationRoots": {
+      "description": "Path candidates written like session roots, each with at least one segment after its variable; the first whose variable resolves is the path.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "pattern": "^(?:\\$\\{userHome\\}|\\$\\{env:[A-Z_][A-Z0-9_]{0,63}\\})(?:/(?!\\.\\.?(?:/|$))[^/$\\\\\\u0000]*)*(?![\\s\\S])",
+        "not": {
+          "pattern": "^\\$\\{[^}]*\\}/*(?![\\s\\S])"
         }
       }
     },

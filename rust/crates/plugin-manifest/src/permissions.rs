@@ -64,6 +64,7 @@ const PERMISSION_COMMAND_INSTALL: &str = "commands.install";
 const PERMISSION_RUNTIME_INSTALL: &str = "runtimes.install";
 
 const KNOWN_PERMISSIONS: &[&str] = &[
+    lithe_plugin_agents::PERMISSION_AGENTS_CONFIGURATION,
     lithe_plugin_agents::PERMISSION_AGENTS_RUN,
     lithe_plugin_agents::PERMISSION_AGENTS_SESSIONS,
     PERMISSION_BACKEND,
@@ -305,8 +306,8 @@ impl DeclarativePluginManifest {
     }
 
     /// Ties `agents[]` to its permissions: running the agents' tools, reading
-    /// their session files, and translating native sessions. A permission
-    /// nothing exercises is refused.
+    /// their session files, translating native sessions and changing their
+    /// configuration. A permission nothing exercises is refused.
     fn require_agent_permissions(&self, required: &mut BTreeSet<&'static str>) -> Validation<()> {
         let needs = [
             (
@@ -322,6 +323,10 @@ impl DeclarativePluginManifest {
             (
                 lithe_plugin_rpc::PERMISSION_AGENTS_NATIVE,
                 lithe_plugin_agents::has_native(&self.agents),
+            ),
+            (
+                lithe_plugin_agents::PERMISSION_AGENTS_CONFIGURATION,
+                lithe_plugin_agents::has_configuration(&self.agents),
             ),
         ];
         for (permission, used) in needs {

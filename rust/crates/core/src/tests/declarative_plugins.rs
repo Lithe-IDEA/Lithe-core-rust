@@ -287,8 +287,9 @@ fn invalid_manifest_fixtures_report_their_stable_codes() {
     }
 }
 
-/// The install review shows every form an agent runs and every directory its
-/// session sources read, so the user sees them before installing.
+/// The install review shows every form an agent runs, every directory its
+/// session sources read and every configuration path the agent library
+/// reads or changes, so the user sees them before installing.
 #[test]
 fn agents_are_reviewed_programs() {
     let review = |name: &str| {
@@ -303,7 +304,7 @@ fn agents_are_reviewed_programs() {
         .filter(|program| {
             matches!(
                 program["kind"].as_str(),
-                Some("agent") | Some("agentSessions")
+                Some("agent") | Some("agentSessions") | Some("agentConfiguration")
             )
         })
         .cloned()
@@ -314,6 +315,15 @@ fn agents_are_reviewed_programs() {
             json!({"kind": "agent", "agentID": "example", "tool": "example-agent", "form": "native", "launchFunction": "example.launch"}),
             json!({"kind": "agent", "agentID": "example", "tool": "example-agent", "form": "terminal", "arguments": []}),
             json!({"kind": "agent", "agentID": "example", "tool": "example-agent", "form": "update", "arguments": ["update"]}),
+            json!({
+                "kind": "agentConfiguration",
+                "agentID": "example",
+                "tool": "example-agent",
+                "files": [{"id": "main", "roots": ["${userHome}/.example/config.json"]}],
+                "editable": true,
+                "instructions": ["${env:EXAMPLE_HOME}/INSTRUCTIONS.md", "${userHome}/.example/INSTRUCTIONS.md"],
+                "skills": ["${userHome}/.example/skills"]
+            }),
             json!({
                 "kind": "agentSessions",
                 "agentID": "example",

@@ -943,6 +943,7 @@ dependencies = [
  "lithe-diagnostics",
  "lithe-lsp-engine",
  "lithe-lsp-transport",
+ "lithe-platform",
  "lithe-plugin-agents",
  "lithe-plugin-manifest",
  "lithe-plugin-model",
@@ -952,6 +953,7 @@ dependencies = [
  "lithe-workspace",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

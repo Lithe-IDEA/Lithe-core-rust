@@ -1548,6 +1548,40 @@ fn records_sync_list_search_read_and_sum_through_the_plugin() {
     );
     assert_eq!(stats["rateLimits"][0]["plan"], "pro");
 
+    // The request table lists the same call with what Core derives from it.
+    let calls = harness.run("agentSessions.calls", json!({ "limit": 50 }));
+    assert_eq!(calls["total"], 1, "{calls}");
+    let row = &calls["calls"][0];
+    assert_eq!(row["agent"], AGENT_KEY, "{calls}");
+    assert_eq!(row["agentID"], "sample", "{calls}");
+    assert_eq!(row["call"]["tokens"]["input"], 100, "{calls}");
+    assert_eq!(row["speed"]["kind"], "measured", "{calls}");
+    assert_eq!(row["speed"]["tokensPerSecond"], 150.0, "{calls}");
+    for (filter, total) in [
+        (json!({ "limit": 1, "model": "sample-model" }), 1),
+        (json!({ "limit": 1, "model": "other-model" }), 0),
+        (json!({ "limit": 1, "failed": true }), 0),
+        (json!({ "limit": 1, "failed": false }), 1),
+        (json!({ "limit": 1, "offset": 1 }), 1),
+    ] {
+        let page = harness.run("agentSessions.calls", filter.clone());
+        assert_eq!(page["total"], total, "{filter} {page}");
+    }
+    assert_eq!(
+        harness.run("agentSessions.calls", json!({ "limit": 1, "offset": 1 }))["calls"],
+        json!([])
+    );
+    for page in [
+        json!({ "limit": 0 }),
+        json!({ "limit": 501 }),
+        json!({ "limit": 1, "offset": 50_001 }),
+    ] {
+        assert_eq!(
+            harness.refused("agentSessions.calls", page),
+            "agentSessions.invalidPage"
+        );
+    }
+
     // A plugin granted agents.usage.read sees totals, never what the
     // sessions hold.
     let usage = harness
@@ -1691,3 +1725,5 @@ fn chunk_lines_keep_byte_offsets_and_text_lines_drop_line_breaks() {
     assert_eq!(crate::records::text_lines_for_test(b"a\r\nb\n"), ["a", "b"]);
     assert!(crate::records::text_lines_for_test(b"").is_empty());
 }
+
+mod library;

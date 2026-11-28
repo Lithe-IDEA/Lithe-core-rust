@@ -1,5 +1,5 @@
-//! `agents.*` and `agentSessions.*` commands, run by `lithe-agent-runtime`
-//! (plan API-45).
+//! `agents.*`, `agentSessions.*` and `agentLibrary.*` commands, run by
+//! `lithe-agent-runtime` (plan API-45).
 
 use crate::protocol::{AgentsCommand, CoreResponse};
 use serde_json::Value;

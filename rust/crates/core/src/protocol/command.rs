@@ -63,8 +63,9 @@ pub enum CoreCommand {
     SearchActions,
     /// AI commit, pull request and inline edit planning run by `lithe-ai` (`ai.*`).
     Ai(AiCommand),
-    /// Agent catalog and live sessions (`agents.*`) and local session records
-    /// (`agentSessions.*`), run by `lithe-agent-runtime` (plan API-45).
+    /// Agent catalog and live sessions (`agents.*`), local session records
+    /// (`agentSessions.*`) and the agent library (`agentLibrary.*`), run by
+    /// `lithe-agent-runtime` (plan API-45).
     Agents(AgentsCommand),
     /// Plugin manifests, plugin views and web content, plugin settings, installed
     /// plugins and the marketplace (`plugins.*`).
@@ -218,7 +219,7 @@ pub enum AiCommand {
 }
 
 #[derive(Debug, Clone, Copy)]
-/// The `agents.*` and `agentSessions.*` commands; their names live in
+/// The `agents.*`, `agentSessions.*` and `agentLibrary.*` commands; their names live in
 /// [`CoreCommand::parse`].
 pub enum AgentsCommand {
     /// Loads the agents of enabled plugins with their grants (`agents.configure`).
@@ -255,6 +256,20 @@ pub enum AgentsCommand {
     RecordsRead,
     /// Sums recorded usage with the latest rate limits (`agentSessions.stats`).
     RecordsStats,
+    /// Lists a page of recorded calls, most recent first (`agentSessions.calls`).
+    RecordsCalls,
+    /// Opens the agent library directory (`agentLibrary.configure`).
+    LibraryConfigure,
+    /// Reads the library and what each agent's configuration holds (`agentLibrary.read`).
+    LibraryRead,
+    /// Saves the library if it is unchanged since it was read (`agentLibrary.save`).
+    LibrarySave,
+    /// Applies one library change to one agent's configuration (`agentLibrary.apply`).
+    LibraryApply,
+    /// Copies a skill into the library (`agentLibrary.importSkill`).
+    LibraryImportSkill,
+    /// Removes a library skill and its links (`agentLibrary.removeSkill`).
+    LibraryRemoveSkill,
 }
 
 impl AgentsCommand {
@@ -278,6 +293,13 @@ impl AgentsCommand {
             Self::RecordsSearch => "agentSessions.search",
             Self::RecordsRead => "agentSessions.read",
             Self::RecordsStats => "agentSessions.stats",
+            Self::RecordsCalls => "agentSessions.calls",
+            Self::LibraryConfigure => "agentLibrary.configure",
+            Self::LibraryRead => "agentLibrary.read",
+            Self::LibrarySave => "agentLibrary.save",
+            Self::LibraryApply => "agentLibrary.apply",
+            Self::LibraryImportSkill => "agentLibrary.importSkill",
+            Self::LibraryRemoveSkill => "agentLibrary.removeSkill",
         }
     }
 }
@@ -1273,6 +1295,13 @@ impl CoreCommand {
             "agentSessions.search" => Some(Self::Agents(AgentsCommand::RecordsSearch)),
             "agentSessions.read" => Some(Self::Agents(AgentsCommand::RecordsRead)),
             "agentSessions.stats" => Some(Self::Agents(AgentsCommand::RecordsStats)),
+            "agentSessions.calls" => Some(Self::Agents(AgentsCommand::RecordsCalls)),
+            "agentLibrary.configure" => Some(Self::Agents(AgentsCommand::LibraryConfigure)),
+            "agentLibrary.read" => Some(Self::Agents(AgentsCommand::LibraryRead)),
+            "agentLibrary.save" => Some(Self::Agents(AgentsCommand::LibrarySave)),
+            "agentLibrary.apply" => Some(Self::Agents(AgentsCommand::LibraryApply)),
+            "agentLibrary.importSkill" => Some(Self::Agents(AgentsCommand::LibraryImportSkill)),
+            "agentLibrary.removeSkill" => Some(Self::Agents(AgentsCommand::LibraryRemoveSkill)),
             "plugins.declarative.validate" => {
                 Some(Self::Plugins(PluginsCommand::DeclarativeValidate))
             }

@@ -1845,6 +1845,7 @@ Older hosts that do not advertise this capability reject
 | `agents.native` | an agent declares `native` (and only then); grants `lithe/host/agents/write`, `lithe/host/agents/report` and the `lithe/host/agents/did*` notifications for the plugin's own sessions |
 | `agents.sessions.read` | an agent declares `sessionSources` (and only then); after the user consents, Core reads the declared session files and hands their lines to the backend |
 | `agents.usage.read` | the backend reads [usage totals](#native-sessions) with `lithe/host/agents/usage`; requires `backend`. Grants numbers and model names only, no conversation text, titles, session IDs or directories |
+| `agents.configuration` | an agent declares `configuration` (and only then); after the user consents, Core reads and changes the declared instruction file and skills directory, and the backend reads the declared configuration files and edits staged copies of them. See [Agent configuration](#agent-configuration) |
 
 | Activation event | Meaning |
 | --- | --- |
@@ -1855,7 +1856,7 @@ Older hosts that do not advertise this capability reject
 | `onVcsRoot:<id>` | Start the VCS provider once a root of its VCS is detected in the workspace. |
 | `onDebug:<id>` | Start the debug adapter when a debug session needs it. |
 | `onWorkspaceOpen` | Start the [`backend`](#backend-lifecycle-and-workspace-contexts) process once a workspace is open. Optional, names no ID, refused without `backend`. |
-| `onAgent:<id>` | Start the backend before a native session of the agent starts or its session records sync. Required for, and only for, an agent that declares `native` or `sessionSources`. |
+| `onAgent:<id>` | Start the backend before a native session of the agent starts, its session records sync or its configuration files are read. Required for, and only for, an agent that declares `native`, `sessionSources` or a `configuration` with `read`. |
 
 Each provider needs its event and each event needs a provider; the only
 optional event is `onWorkspaceOpen`. There is no event that starts a plugin
@@ -3651,7 +3652,8 @@ contexts. `fixtures/backend/backend-workspace.plugin.json` is the example.
   event, or a provider the host queries: a toolchain or keymap import
   provider, a language server with `launch.kind: "backend"`, whose start
   asks the backend for its command line, or an [agent](#agents) whose native
-  sessions or session records the backend serves (`onAgent:<id>`). A backend
+  sessions, session records or configuration files the backend serves
+  (`onAgent:<id>`). A backend
   with none of them is `plugin.manifest.invalid`.
 - It is one process per plugin, shared by every open workspace and
   window, on the machine that runs Lithe, also for remote workspaces. No
@@ -3721,14 +3723,16 @@ rejections.
 | `terminal` | `{arguments}`: runs `tool` with these arguments in a host terminal, the CLI's own interactive interface. |
 | `update` | `{arguments}`, nonempty: runs `tool` with these arguments to update the CLI, after the user confirms. A CLI without a self-update command declares none. |
 | `sessionSources` | Up to four [session sources](#session-records): where the CLI keeps its session files and the backend functions that parse them. |
+| `configuration` | Where the CLI keeps the instructions, skills, MCP servers and hooks the [agent library](#agent-configuration) manages, and the backend functions that read and edit its files. |
 
 - A plugin declares at most eight agents; the host shows them sorted by
   `id`. Each agent declares at least one of `native`, `acp` and `terminal`.
 - `acp`, `terminal` and `update` hold at most 64 arguments of at most 4 KiB
   each, without NUL. Arguments are fixed: they take no templates.
 - A function ID is dot-separated lowerCamelCase segments, as in
-  [plugin functions](#plugin-functions). `native` and `sessionSources` are
-  served by the plugin backend, so they need `backend`.
+  [plugin functions](#plugin-functions). `native`, `sessionSources` and the
+  `read` and `edit` of `configuration` are served by the plugin backend, so
+  they need `backend`.
 - Every rejection is `plugin.manifest.invalid` with `field` naming the
   place, such as `agents[0].tool` or `agents[0].sessionSources[1].include[0]`.
 
@@ -3736,8 +3740,11 @@ The install review lists one program per form: `kind: "agent"` with
 `agentID`, `tool`, `form` (`native`, `acp`, `terminal` or `update`), and
 `launchFunction` for `native` or the fixed `arguments` otherwise; and one
 `kind: "agentSessions"` entry per source with `agentID`, `tool`, `source`,
-`roots` and `include`, so the user sees every directory the plugin asks to
-read before installing it.
+`roots` and `include`; and one `kind: "agentConfiguration"` entry per agent
+that declares `configuration`, with `agentID`, `tool`, `instructions?`,
+`skills?` (their roots), `files` (`{id, roots}`) and `editable` (whether it
+declares `edit`). The user sees every directory and file the plugin asks to
+read or change before installing it.
 
 ### Agent permissions and activation
 
@@ -3747,19 +3754,21 @@ read before installing it.
 | `agents.native` | an agent declares `native` | `lithe/host/agents/write`, `lithe/host/agents/report` and the `lithe/host/agents/did*` notifications, only for the plugin's own sessions |
 | `agents.sessions.read` | an agent declares `sessionSources` | after the user consents, Core reads the declared session files and the backend parses them |
 | `agents.usage.read` | the backend sums agent usage; needs `backend` | `lithe/host/agents/usage`: numbers and model names of the agents the user enabled, no conversation text, titles, session IDs or directories |
+| `agents.configuration` | an agent declares `configuration` | after the user consents, Core reads and changes the declared instruction file and skills directory, the backend reads the declared files and edits staged copies; every change is one the user chose |
 
 A missing permission is `plugin.permission.undeclared`; a permission no
 agent needs is `plugin.manifest.invalid` (`"<permission> is declared, but no
 agent needs it."`). `agents.usage.read` is the exception, since a plugin
 without agents of its own may read the totals. Every agent that declares
-`native` or `sessionSources` needs the activation event `onAgent:<id>`, and
+`native`, `sessionSources` or a `configuration` with `read` needs the
+activation event `onAgent:<id>`, and
 the event is refused for an agent that needs no backend
 (`plugin.activation.invalid` either way): a terminal-only or
 ACP-only agent runs only its tool, and a plugin of such agents alone needs no
 `backend`. `onAgent:<id>` is one of the ways a
 [backend](#backend-lifecycle-and-workspace-contexts) starts: the host starts
-the backend before it starts a native session of the agent or syncs its
-records.
+the backend before it starts a native session of the agent, syncs its
+records or reads its configuration files.
 
 ### Host commands
 
@@ -3770,9 +3779,13 @@ validates each manifest itself, keeps the grants the manifest declares, and
 answers `{agents, rejected: [{pluginID, code, message}]}`. `agents.catalog`
 answers `{agents}` again. Each entry is `{pluginID, agentID, displayName,
 tool, modes, forms, readsSessions, mayRun, mayReadSessions, icon?,
-terminalArguments?, update?, sessionRootVariables?}`: `modes` lists
-`native` and `acp`, `forms` lists `conversation` and `terminal`, and
-`sessionRootVariables` names the environment variables the roots read.
+terminalArguments?, update?, sessionRootVariables?, configuration?,
+mayConfigure?}`: `modes` lists `native` and `acp`, `forms` lists
+`conversation` and `terminal`, and `sessionRootVariables` names the
+environment variables the session and configuration roots read. An agent
+that declares `configuration` gives `configuration: {instructions, skills,
+files, editable}`, which of them it declares and whether it declares `edit`,
+and `mayConfigure`, whether its plugin is granted `agents.configuration`.
 
 | Command | Payload | Result |
 | --- | --- | --- |
@@ -3984,6 +3997,20 @@ Lithe list, search and sum them without the CLI running:
   groupBy, utcOffsetSeconds}` serve the host's own views; `agent` is
   `<pluginID>/<agentID>`, and `stats` groups by `day`, `agent`, `model`,
   `session` or `cwd`.
+- `agentSessions.calls {agents?, sessionID?, sinceMs?, untilMs?, model?,
+  failed?, offset?, limit}` serves the host's request table: the calls the
+  filter keeps, most recent first, `limit` 1–500 at an `offset` of at most
+  50000, with `total`, how many the filter keeps. `model` matches the model
+  that answered, or the one asked for when the answer did not name it;
+  `failed` keeps only failed (`true`) or only successful (`false`) calls. Each
+  row gives `agent`, `pluginID`, `agentID`, `path`, `cwd?` and `call`, the
+  call as `scan` reported it, plus what Core derives: `cost {usd,
+  approximate}` at API prices when the model is priced, `cacheHitRate` when
+  the call reports a cache count, and `speed {kind: measured|atLeast,
+  tokensPerSecond}` when its timing allows. `path` and `call.range` are what
+  `agentSessions.read` takes to show the call's messages. Another page or
+  limit refuses with `agentSessions.invalidPage`. It was added within
+  `agents` 0; an older Core refuses it as an unknown command.
 - A listed session gives `readBytes`, how many bytes of `path` the cache has
   read; a read range ends at most there and spans at most 16 MiB. `read`
   answers `{changed, messages, end}`. `end` is where the next page starts: the
@@ -4070,6 +4097,278 @@ under the agent's roots), `agentSessions.discoveryFailed`,
 `agentSessions.backendUnavailable`, `agentSessions.scanFailed`,
 `agentSessions.invalidScan`, `agentSessions.readFailed`,
 `agentSessions.invalidRead` and `agentSessions.invalidGroup`.
+
+### Agent configuration
+
+An agent's CLI keeps the user's instructions, skills, MCP servers and hooks
+in its own files. `configuration` says where, so the host's agent library
+can show what each agent has and, when the user asks, turn an item of the
+library on or off for it. The library is Lithe's own data; the host draws
+every view of it. The host shows an agent by its `displayName` and `icon`
+and keeps no name or icon of its own for any agent.
+
+```json
+"configuration": {
+  "instructions": {"roots": ["${env:SAMPLE_HOME}/INSTRUCTIONS.md", "${userHome}/.sample/INSTRUCTIONS.md"]},
+  "skills": {"roots": ["${userHome}/.sample/skills"]},
+  "files": [{"id": "main", "roots": ["${userHome}/.sample/config.json"]}],
+  "read": "configuration.read",
+  "edit": "configuration.edit"
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `instructions` | `{roots}`: the Markdown file the CLI reads as the user's own instructions. Core reads and writes it. |
+| `skills` | `{roots}`: the directory of the CLI's user skills, one directory with a `SKILL.md` per skill. Core reads it and links library skills into it. |
+| `files` | At most 8 `{id, roots}`: the files in the CLI's own format that hold its MCP servers and hooks. `id` is 1–64 bytes of lowercase ASCII letters, digits and `-`, not starting or ending with `-`, unique in the agent. Only the backend reads their format. |
+| `read` | Backend function that reports what `files` hold. Required with `files` and refused without them. |
+| `edit` | Backend function that applies one change to a staged copy of one of `files`. Needs `read`. Without it the agent's MCP servers and hooks are shown, never changed. |
+
+- A configuration declares at least one of `instructions`, `skills` and
+  `files`. A function ID is dot-separated lowerCamelCase segments.
+- Roots are written like [session roots](#session-records): 1–4 candidates,
+  each `${userHome}` or `${env:NAME}` followed by at least one relative
+  segment. The first candidate whose variable resolves to a nonempty value
+  is the path, whether or not anything is there yet.
+- The plugin declares `agents.configuration`. Until the user grants it, the
+  agent is listed with `mayConfigure: false` and nothing of it is read or
+  changed.
+- `configuration` was added within `agents` 0. A Core that predates it
+  refuses a manifest that declares it as invalid (`configuration` is an
+  unknown field of the agent), and answers none of the `agentLibrary.*`
+  commands.
+
+#### The library
+
+The host opens the library with `agentLibrary.configure {directory,
+userHome, environment?}`. `directory` is a directory of the platform's
+application data, never in the package or the installation, and both paths
+are absolute (`agentLibrary.invalidDirectory`). `environment` gives the
+values of the catalog's `sessionRootVariables`: at most 256, each name 1–256
+bytes and each value at most 32 KiB (`agentLibrary.invalidEnvironment`). In
+`directory`, created owner-only, Core keeps `library.json` (the servers,
+hooks and instruction sets), `skills/<name>/` (one directory per skill),
+`state.json` (a digest of what Core last wrote to each agent's instruction
+file) and `staging/` (the copies plugins edit).
+
+The library is `{mcpServers, hooks, instructions}`:
+
+- `mcpServers`: at most 256 `{name, transport, command?, args?, url?}`,
+  names unique. A `stdio` server has a nonblank `command` and at most 64
+  `args`; an `http` or `sse` server has an `http://` or `https://` `url` and
+  neither. Version 0 keeps no environment variables or headers, whose values
+  are secrets.
+- `hooks`: at most 256 `{id, event, matcher?, command, timeoutSeconds?}`.
+  The host chooses `id` (1–64 bytes of lowercase ASCII letters, digits and
+  `-`, unique); `event` is 1–64 ASCII letters, digits and `_`, as the CLIs
+  name their hook events; `command` is nonblank; `timeoutSeconds` is
+  1–86400.
+- `instructions`: `{sets, active?, agents}`. `sets` holds at most 64 `{id,
+  name, text}`, `id` like a hook's and `text` at most 256 KiB; `active`
+  names one set. `agents` maps at most 256 agent keys `<pluginID>/<agentID>`
+  to `{enabled, extra?}`: whether the agent's instruction file follows the
+  library, and at most 64 KiB of text only that agent gets.
+
+A name is 1–128 characters without leading or trailing spaces or control
+characters. A command, URL, matcher or argument is at most 4 KiB without
+NUL.
+
+An agent's instructions are the active set's text, then, after a blank
+line, the agent's `extra`, ending with one line break; they are empty when
+neither has text.
+
+#### Library commands
+
+| Command | Payload | Result |
+| --- | --- | --- |
+| `agentLibrary.configure` | `{directory, userHome, environment?}` | `{}` |
+| `agentLibrary.read` | `{}` | `{revision, library, skills, states, agents}` |
+| `agentLibrary.save` | `{revision, library}` | `{revision}` |
+| `agentLibrary.apply` | `{agent, change}` | `{changed}` |
+| `agentLibrary.importSkill` | `{agent, name}` or `{directory}` | `{name, files, skipped}` |
+| `agentLibrary.removeSkill` | `{name}` | `{unlinked}` |
+
+- `save`, `apply`, `importSkill` and `removeSkill` run only for a request
+  whose origin is the user (`agentLibrary.userActionRequired`): a plugin
+  never changes the library or an agent's configuration.
+- `revision` is the SHA-256 of `library.json` in lowercase hex, or `empty`
+  before the first save. `save` replaces the library only while the file is
+  still at `revision` (`agentLibrary.revisionChanged`) and never replaces a
+  file it cannot read. A `library.json` Core cannot read as a library is
+  `agentLibrary.invalidLibraryFile`; Core never rewrites it on its own.
+- `agent` is `<pluginID>/<agentID>` of an agent that declares
+  `configuration` (`agentLibrary.unknownAgent`) and whose plugin is granted
+  `agents.configuration` (`agentLibrary.notGranted`).
+
+`read` answers the library, `skills`, `states` and `agents`:
+
+- `skills`: the library's skills, `{name, description?, agents}`, sorted by
+  name. `agents` maps each agent key to `on` (the agent's skills directory
+  has a link of that name into the library), `conflict` (an entry of that
+  name that is not) or `off`.
+- `states.mcpServers` maps each library server's name, and
+  `states.hooks` each library hook's `id`, to the same kind of map. A server
+  is `on` when the agent has a server of that name that is the same server
+  (transport, `command`, `args` and `url`) with no environment variables or
+  headers, `conflict` when its server of that name differs, `unsupported`
+  when the plugin names no file for servers, otherwise `off`. A hook is `on`
+  when the agent has a hook with the same `event`, `matcher` and `command`
+  (an empty matcher is no matcher), `unsupported` when the plugin names no
+  file for hooks or the agent runs no hooks for the event, otherwise `off`.
+  An agent whose plugin is not granted, whose `read` failed or that declares
+  no `files` is in neither map; one whose skills directory Lithe could not
+  read, or that declares no `skills`, is in no skill's `agents`.
+- `agents`: one entry per agent that declares `configuration`, in catalog
+  order: `{agent, pluginID, agentID, displayName, icon?, mayConfigure,
+  editable, instructions?, skills?, mcpServers?, hooks?, hookEvents?,
+  providedSkills?, targets?, readError?}`. An agent whose plugin is not
+  granted gives only the fields up to `editable`.
+  - `instructions`: `{path, state}`, `state` being `absent`, `empty` (only
+    whitespace), `current` (exactly the agent's instructions), `written`
+    (what Lithe last wrote, since changed in the library), `other` (text
+    Lithe did not write), `tooLarge` or `unreadable`.
+  - `skills`: `{path, items}` with up to 512 `{name, kind, description?}`,
+    `kind` being `library` (a link into the library), `own` (a directory of
+    the agent's own) or `link` (a link elsewhere); or `{path, error:
+    "agentLibrary.unreadable"}`. Entries without a readable `SKILL.md`,
+    hidden entries and plain files are left out.
+  - `mcpServers` and `hooks` are what `read` reported, each with
+    `inLibrary`, whether the library holds the same item; `hookEvents` and
+    `providedSkills` likewise; `targets` is `{mcpServers, hooks}`, whether
+    the plugin names a file for each.
+  - `readError` is the code of a failed `read` (`agentLibrary.backendUnavailable`,
+    `agentLibrary.readFailed` or `agentLibrary.invalidSnapshot`); the rest
+    of the entry still answers.
+
+`apply` makes one `change`, and answers `changed: false` when the agent
+already had what it asks for:
+
+| `change` | Effect |
+| --- | --- |
+| `{category: "mcpServers", op: "put", name}` | puts the library server `name` into the agent |
+| `{category: "mcpServers", op: "remove", name}` | removes the agent's own server `name` |
+| `{category: "hooks", op: "put", id}` | puts the library hook `id` into the agent |
+| `{category: "hooks", op: "remove", hook: {event, matcher?, command, timeoutSeconds?}}` | removes the agent's own hook that is this hook |
+| `{category: "skills", op: "link", name}` | links the library skill `name` into the agent's skills directory |
+| `{category: "skills", op: "unlink", name}` | removes the agent's link of that name into the library |
+| `{category: "instructions", op: "write", replace?}` | writes the agent's instructions to its instruction file |
+
+Any other combination is `agentLibrary.invalidChange`; a library item that
+does not exist is `agentLibrary.unknownItem`.
+
+A server or hook changes through the plugin, on a copy:
+
+1. Core asks `read` for what the files hold now and takes the file its
+   `targets` names for the category (`agentLibrary.noTarget`; an agent
+   without `edit` is `agentLibrary.notEditable`). Removing an item the
+   user's own configuration does not hold, including one the CLI installed
+   itself, is `agentLibrary.notInAgent`; putting a hook for an event the
+   agent does not run is `agentLibrary.unsupportedEvent`.
+2. Core follows links in the file's path to the file itself (a link to
+   nothing is `agentLibrary.brokenLink`), copies the file, or nothing when it
+   does not exist, into an owner-only file in `staging/`, and calls `edit`
+   on the copy.
+3. When `edit` answers `changed` and the copy differs from the file, Core
+   calls `read` again with the copy in place of the file. The change must
+   show there (`agentLibrary.editNotApplied`).
+4. Core replaces the file only if it still holds the bytes it copied
+   (`agentLibrary.fileChanged`): a new file next to it, with the old file's
+   permissions (owner-only for a new file), written to disk and renamed over
+   it. The copy is removed either way.
+
+A skill is linked as a symbolic link to `skills/<name>` of the library.
+Unlinking removes only a link into the library
+(`agentLibrary.notLibraryLink`); linking over an entry of the agent's own is
+`agentLibrary.agentSkillExists`. On Windows a link needs Developer Mode or
+an elevated process, otherwise `agentLibrary.linkFailed`. An agent without
+`skills` is `agentLibrary.noSkills`.
+
+Instructions are written only while the agent's `enabled` is true
+(`agentLibrary.instructionsOff`). Text Lithe did not write is replaced only
+with `replace: true` (`agentLibrary.otherInstructions`); an empty file and
+the text Lithe last wrote are replaced without it. The file is replaced the
+same way as a configuration file. An agent without `instructions` is
+`agentLibrary.noInstructions`.
+
+`importSkill` copies a skill into the library: `{agent, name}` the agent's
+own skill directory `name` (a link is `agentLibrary.notOwnSkill`),
+`{directory}` an absolute directory the user chose
+(`agentLibrary.invalidSkillDirectory`); any other shape is
+`agentLibrary.invalidImport`. The directory needs a readable `SKILL.md`
+(`agentLibrary.notSkill`). The skill's name is `name`, else the `name` of the
+`SKILL.md` front matter, else the directory's name, and is 1–64 bytes of
+ASCII letters, digits, `.`, `_` and `-`, not starting with `.`
+(`agentLibrary.invalidSkillName`). Core copies the regular files and
+directories, counting the links and other entries it skips in `skipped`,
+within 1024 files, 16 MiB and 16 levels (`agentLibrary.skillTooLarge`), and
+moves the copy into the library without replacing a skill
+(`agentLibrary.skillExists`). Of the front matter Core reads only `name` and
+`description`, as plain, quoted or block scalars; a description is cut to
+1024 characters.
+
+`removeSkill` removes the skill's links from the skills directory of every
+agent whose plugin is granted, then the skill, and answers how many links it
+removed. A link in an agent whose plugin is not granted is left, and leads
+nowhere.
+
+#### Configuration functions
+
+`read` receives `{agentID, files: [{id, path, exists}]}`, one item per
+declared file whose path resolves. `path` may be a staged copy standing in
+for the file, with the same extension; `exists` says whether anything is at
+`path`. It has 10 seconds and answers exactly:
+
+- `format: "litheAgentConfiguration"` and `version: 0`;
+- `mcpServers`: at most 256 `{name, transport, command?, args?, url?,
+  environmentNames?, headerNames?, origin, provider?}`, the servers the
+  files configure. `environmentNames` and `headerNames` are at most 64 names
+  each of ASCII letters, digits, `_` and `-`, never values. `origin` is
+  `user` for the user's own configuration, which `edit` changes, or `agent`
+  for what the CLI installed itself, such as through a CLI plugin, which
+  `provider` (1–128 characters) names and Lithe only shows;
+- `hooks`: at most 256 `{event, matcher?, command, timeoutSeconds?, origin,
+  provider?}`;
+- `hookEvents`: at most 64 distinct events the CLI runs hooks for; empty
+  when the plugin does not say, and then every event is allowed;
+- `skills`: at most 512 `{name, description?, provider?}`, skills the CLI
+  installed itself outside the skills directory, `description` at most 1024
+  characters;
+- `targets`: `{mcpServers?, hooks?}`, the `id` of the declared file a
+  change of each category goes to. A category without one is only shown.
+
+Any other answer is `agentLibrary.invalidSnapshot`; a failed call is
+`agentLibrary.readFailed`.
+
+`edit` receives `{agentID, file: {id, staging, exists}, change}`, with
+`change` one of `{category: "mcpServers", op: "put", server: {name,
+transport, command?, args?, url?}}`, `{category: "mcpServers", op:
+"remove", name}`, `{category: "hooks", op: "put", hook: {event, matcher?,
+command, timeoutSeconds?}}` and `{category: "hooks", op: "remove", hook}`.
+`put` makes the user's configuration hold exactly that server, replacing a
+server of the same name, or that hook; `remove` takes the item out. The
+backend changes only the file at `staging`, empty when `exists` is false, in
+the CLI's own format, keeping everything else the file holds, and answers
+`{format: "litheAgentConfigurationEdit", version: 0, changed}` within 10
+seconds. Any other answer is `agentLibrary.invalidEdit`; a failed call is
+`agentLibrary.editFailed`. The backend never learns the file's own path from
+`edit`.
+
+#### Limits, refusals and logging
+
+- Core reads at most 8 MiB of `library.json`, 16 MiB of a configuration
+  file, 1 MiB of an instruction file (`agentLibrary.fileTooLarge`) and 64
+  KiB of a `SKILL.md`; a larger `SKILL.md` is a skill without a description.
+  A file Core cannot read is `agentLibrary.unreadable`, one it cannot write
+  `agentLibrary.writeFailed`.
+- A request before `agentLibrary.configure` is `agentLibrary.notConfigured`.
+  A `save` whose library breaks a rule above is `agentLibrary.invalidLibrary`,
+  its message naming the field. A backend that is not running is
+  `agentLibrary.backendUnavailable`.
+- Changes never interleave: Core checks and replaces one file at a time,
+  never while waiting for a backend.
+- Core logs plugin and agent IDs, categories, operations, counts, durations
+  and refusal codes, never names, commands, paths or text.
 
 ### Privacy and logging
 

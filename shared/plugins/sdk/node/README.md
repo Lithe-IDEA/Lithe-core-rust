@@ -621,6 +621,33 @@ ID, and `usage(params)` for usage totals.
   `{sinceMs, untilMs, summaries, speeds, rateLimits}`: numbers and model names only,
   never conversation text, titles, session IDs or directories.
 
+### Agent configuration functions
+
+An agent that declares
+[`configuration`](../../contract/v1/README.md#agent-configuration) names a
+`read` function and, when the library may change its files, an `edit`
+function. Both are ordinary plugin functions: register them with
+`backend.function(id, handler)` like any other; this SDK has no separate interface for them, so
+every SDK version can serve them. Core calls them only for the agent library
+and gives each call 10 seconds.
+
+- `read` receives `{agentID, files: [{id, path, exists}]}` and answers the
+  `litheAgentConfiguration` snapshot: the MCP servers, hooks, hook events and
+  self-installed skills the files hold, and which declared file takes the
+  changes of each category. Report environment variable and header names,
+  never their values.
+- `edit` receives `{agentID, file: {id, staging, exists}, change}`, changes
+  only the file at `staging` in the CLI's own format, keeps everything else
+  the file holds, and answers
+  `{format: "litheAgentConfigurationEdit", version: 0, changed}`. Core checks
+  the staged copy and moves it into place; the backend never writes the real
+  file.
+- Both need `agents.configuration`. `read` reads the declared files at the
+  paths Core passes, which may be staged copies, and may also read what the
+  CLI installed itself, such as its plugins, to report it with
+  `origin: "agent"`; it never opens credential files. `edit` writes only
+  the file at `staging`.
+
 ## Testing
 
 Run these from the root of this repository:

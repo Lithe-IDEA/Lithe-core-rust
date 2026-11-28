@@ -8,10 +8,26 @@
       "level": "info",
       "message": "Agent session started",
       "fields": {
-        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
-        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
-        "session": {"type": "id", "required": true, "description": "Opaque session ID Core assigned; never the agent CLI's own session ID"},
-        "mode": {"type": "token", "required": true, "description": "Connection mode Core selected, e.g. native"}
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity that declares the agent"
+        },
+        "agent": {
+          "type": "id",
+          "required": true,
+          "description": "Agent ID the plugin declares"
+        },
+        "session": {
+          "type": "id",
+          "required": true,
+          "description": "Opaque session ID Core assigned; never the agent CLI's own session ID"
+        },
+        "mode": {
+          "type": "token",
+          "required": true,
+          "description": "Connection mode Core selected, e.g. native"
+        }
       },
       "rate": 60,
       "owner": "lithe-core"
@@ -22,9 +38,21 @@
       "level": "warn",
       "message": "Agent session could not start",
       "fields": {
-        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
-        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
-        "reason": {"type": "token", "required": true, "description": "Stable refusal or failure code; excludes paths, arguments and CLI output"}
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity that declares the agent"
+        },
+        "agent": {
+          "type": "id",
+          "required": true,
+          "description": "Agent ID the plugin declares"
+        },
+        "reason": {
+          "type": "token",
+          "required": true,
+          "description": "Stable refusal or failure code; excludes paths, arguments and CLI output"
+        }
       },
       "rate": 60,
       "owner": "lithe-core"
@@ -35,10 +63,26 @@
       "level": "info",
       "message": "Agent session ended",
       "fields": {
-        "session": {"type": "id", "required": true, "description": "Opaque session ID Core assigned"},
-        "reason": {"type": "token", "required": true, "description": "Why the session ended: exited, closed, backendEnded or failed"},
-        "exit_code": {"type": "int", "required": false, "description": "Exit code of the agent CLI; absent when a signal ended it"},
-        "duration": {"type": "duration", "required": true, "description": "Milliseconds the session ran"}
+        "session": {
+          "type": "id",
+          "required": true,
+          "description": "Opaque session ID Core assigned"
+        },
+        "reason": {
+          "type": "token",
+          "required": true,
+          "description": "Why the session ended: exited, closed, backendEnded or failed"
+        },
+        "exit_code": {
+          "type": "int",
+          "required": false,
+          "description": "Exit code of the agent CLI; absent when a signal ended it"
+        },
+        "duration": {
+          "type": "duration",
+          "required": true,
+          "description": "Milliseconds the session ran"
+        }
       },
       "rate": 60,
       "owner": "lithe-core"
@@ -49,8 +93,16 @@
       "level": "warn",
       "message": "Agent plugin reported an invalid session event",
       "fields": {
-        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity of the reporting backend"},
-        "code": {"type": "token", "required": true, "description": "Stable rejection code; the event content is never logged"}
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity of the reporting backend"
+        },
+        "code": {
+          "type": "token",
+          "required": true,
+          "description": "Stable rejection code; the event content is never logged"
+        }
       },
       "rate": 60,
       "owner": "lithe-core"
@@ -61,11 +113,31 @@
       "level": "info",
       "message": "Agent session records synchronized",
       "fields": {
-        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
-        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
-        "files_read": {"type": "int", "required": true, "description": "Session files read in this sync"},
-        "files_failed": {"type": "int", "required": true, "description": "Session files that could not be read or parsed"},
-        "duration": {"type": "duration", "required": true, "description": "Milliseconds the sync took"}
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity that declares the agent"
+        },
+        "agent": {
+          "type": "id",
+          "required": true,
+          "description": "Agent ID the plugin declares"
+        },
+        "files_read": {
+          "type": "int",
+          "required": true,
+          "description": "Session files read in this sync"
+        },
+        "files_failed": {
+          "type": "int",
+          "required": true,
+          "description": "Session files that could not be read or parsed"
+        },
+        "duration": {
+          "type": "duration",
+          "required": true,
+          "description": "Milliseconds the sync took"
+        }
       },
       "rate": 60,
       "owner": "lithe-core"
@@ -76,9 +148,21 @@
       "level": "warn",
       "message": "Agent session records could not be synchronized",
       "fields": {
-        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
-        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
-        "reason": {"type": "token", "required": true, "description": "Stable failure code; excludes paths and session content"}
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity that declares the agent"
+        },
+        "agent": {
+          "type": "id",
+          "required": true,
+          "description": "Agent ID the plugin declares"
+        },
+        "reason": {
+          "type": "token",
+          "required": true,
+          "description": "Stable failure code; excludes paths and session content"
+        }
       },
       "rate": 60,
       "owner": "lithe-core"
@@ -89,9 +173,21 @@
       "level": "info",
       "message": "Agent session records removed from the cache",
       "fields": {
-        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
-        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
-        "files": {"type": "int", "required": true, "description": "Session files whose records were dropped"}
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity that declares the agent"
+        },
+        "agent": {
+          "type": "id",
+          "required": true,
+          "description": "Agent ID the plugin declares"
+        },
+        "files": {
+          "type": "int",
+          "required": true,
+          "description": "Session files whose records were dropped"
+        }
       },
       "rate": 60,
       "owner": "lithe-core"
@@ -102,12 +198,209 @@
       "level": "info",
       "message": "An MCP client searched or read agent session records",
       "fields": {
-        "tool": {"type": "token", "required": true, "description": "IDE tool the MCP client called, lithe_sessions_search or lithe_sessions_read; never the query, session ID or content"},
-        "results": {"type": "int", "required": true, "description": "Hits or messages answered"},
-        "duration": {"type": "duration", "required": true, "description": "Milliseconds the call took"}
+        "tool": {
+          "type": "token",
+          "required": true,
+          "description": "IDE tool the MCP client called, lithe_sessions_search or lithe_sessions_read; never the query, session ID or content"
+        },
+        "results": {
+          "type": "int",
+          "required": true,
+          "description": "Hits or messages answered"
+        },
+        "duration": {
+          "type": "duration",
+          "required": true,
+          "description": "Milliseconds the call took"
+        }
       },
       "rate": 60,
       "owner": "Lithe"
+    },
+    {
+      "id": "agent.library.read_finished",
+      "channel": "agent",
+      "level": "debug",
+      "message": "Agent library and agent configuration read",
+      "fields": {
+        "agents": {
+          "type": "int",
+          "required": true,
+          "description": "Agents declaring configuration that were reported"
+        },
+        "failed": {
+          "type": "int",
+          "required": true,
+          "description": "Agents whose plugin could not read their configuration"
+        },
+        "duration": {
+          "type": "duration",
+          "required": true,
+          "description": "Milliseconds the command took, including plugin calls"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.library.read_failed",
+      "channel": "agent",
+      "level": "warn",
+      "message": "An agent plugin could not read the agent's configuration",
+      "fields": {
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity that declares the agent"
+        },
+        "agent": {
+          "type": "id",
+          "required": true,
+          "description": "Agent ID the plugin declares"
+        },
+        "reason": {
+          "type": "token",
+          "required": true,
+          "description": "Stable refusal code such as agentLibrary.fileChanged; never names, commands, paths or text"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.library.updated",
+      "channel": "agent",
+      "level": "info",
+      "message": "Agent library saved",
+      "fields": {
+        "servers": {
+          "type": "int",
+          "required": true,
+          "description": "MCP servers kept in the library after the save"
+        },
+        "hooks": {
+          "type": "int",
+          "required": true,
+          "description": "Hooks kept in the library after the save"
+        },
+        "sets": {
+          "type": "int",
+          "required": true,
+          "description": "Instruction sets kept in the library after the save"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.library.change_applied",
+      "channel": "agent",
+      "level": "info",
+      "message": "A library change was applied to an agent's configuration",
+      "fields": {
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity that declares the agent"
+        },
+        "agent": {
+          "type": "id",
+          "required": true,
+          "description": "Agent ID the plugin declares"
+        },
+        "category": {
+          "type": "token",
+          "required": true,
+          "description": "Library category changed: mcpServers, hooks, skills or instructions"
+        },
+        "change": {
+          "type": "token",
+          "required": true,
+          "description": "Change applied: put, remove, link, unlink or write"
+        },
+        "changed": {
+          "type": "bool",
+          "required": true,
+          "description": "False when the agent's configuration already matched"
+        },
+        "duration": {
+          "type": "duration",
+          "required": true,
+          "description": "Milliseconds the command took, including plugin calls"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.library.change_failed",
+      "channel": "agent",
+      "level": "warn",
+      "message": "A library change to an agent's configuration was refused",
+      "fields": {
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity that declares the agent"
+        },
+        "agent": {
+          "type": "id",
+          "required": true,
+          "description": "Agent ID the plugin declares"
+        },
+        "category": {
+          "type": "token",
+          "required": true,
+          "description": "Library category changed: mcpServers, hooks, skills or instructions"
+        },
+        "change": {
+          "type": "token",
+          "required": true,
+          "description": "Change applied: put, remove, link, unlink or write"
+        },
+        "reason": {
+          "type": "token",
+          "required": true,
+          "description": "Stable refusal code such as agentLibrary.fileChanged; never names, commands, paths or text"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.library.skill_import_finished",
+      "channel": "agent",
+      "level": "info",
+      "message": "A skill was copied into the agent library",
+      "fields": {
+        "files": {
+          "type": "int",
+          "required": true,
+          "description": "Regular files copied into the library skill"
+        },
+        "skipped": {
+          "type": "int",
+          "required": true,
+          "description": "Links and special entries left out of the copy"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.library.skill_removed",
+      "channel": "agent",
+      "level": "info",
+      "message": "A skill was removed from the agent library",
+      "fields": {
+        "unlinked": {
+          "type": "int",
+          "required": true,
+          "description": "Links to the skill removed from agents' skills directories"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
     }
   ]
 }
