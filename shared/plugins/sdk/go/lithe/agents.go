@@ -4,8 +4,9 @@ package lithe
 //
 // Core starts an agent's CLI and relays it through the plugin backend: the
 // CLI's standard output arrives as lithe/host/agents/didOutput, the user's
-// prompts, cancellations and permission decisions as didPrompt, didCancel and
-// didDecidePermission, and the backend answers with lithe/host/agents/write
+// prompts, cancellations, permission decisions and setting changes as
+// didPrompt, didCancel, didDecidePermission and didSetConfigOption, and the
+// backend answers with lithe/host/agents/write
 // (the CLI's standard input) and lithe/host/agents/report (session events). A
 // translation is only right when it sees the CLI's lines in order, so the SDK
 // gives every session one goroutine that runs its handler's methods one at a
@@ -26,13 +27,14 @@ const (
 	methodAgentsDidPrompt = "lithe/host/agents/didPrompt"
 	methodAgentsDidCancel = "lithe/host/agents/didCancel"
 	methodAgentsDidDecide = "lithe/host/agents/didDecidePermission"
+	methodAgentsDidConfig = "lithe/host/agents/didSetConfigOption"
 	methodAgentsDidExit   = "lithe/host/agents/didExit"
 )
 
 func isAgentNotification(method string) bool {
 	switch method {
 	case methodAgentsDidStart, methodAgentsDidOutput, methodAgentsDidPrompt,
-		methodAgentsDidCancel, methodAgentsDidDecide, methodAgentsDidExit:
+		methodAgentsDidCancel, methodAgentsDidDecide, methodAgentsDidConfig, methodAgentsDidExit:
 		return true
 	}
 	return false
@@ -68,15 +70,23 @@ type AgentSession interface {
 	// DecidePermission says the user answered permission request permission
 	// with option.
 	DecidePermission(turn uint64, permission, option string) error
+	// SetConfigOption says the user picked value for the session setting
+	// option, one the backend reported in a configOptions event. Apply it when
+	// the CLI can take it and report the settings again.
+	SetConfigOption(option, value string) error
 	// Exited says the CLI ended; the session gets no further calls.
 	Exited(exitCode *int64)
 }
 
-// AgentSessionBase answers Cancel and Exited without doing anything.
+// AgentSessionBase answers Cancel, SetConfigOption and Exited without doing
+// anything.
 type AgentSessionBase struct{}
 
 // Cancel does nothing.
 func (AgentSessionBase) Cancel(uint64) error { return nil }
+
+// SetConfigOption does nothing.
+func (AgentSessionBase) SetConfigOption(string, string) error { return nil }
 
 // Exited does nothing.
 func (AgentSessionBase) Exited(*int64) {}
@@ -160,6 +170,7 @@ type agentNotice struct {
 	text       string
 	permission string
 	option     string
+	value      string
 	exitCode   *int64
 }
 
@@ -261,6 +272,7 @@ func (b *Backend) routeAgentNotification(method string, params map[string]any) {
 	notice.text, _ = params["text"].(string)
 	notice.permission, _ = params["permission"].(string)
 	notice.option, _ = params["option"].(string)
+	notice.value, _ = params["value"].(string)
 	if lines, ok := params["lines"].([]any); ok {
 		for _, line := range lines {
 			text, _ := line.(string)
@@ -360,6 +372,8 @@ func deliverAgentNotice(handler AgentSession, notice agentNotice) (err error) {
 		return handler.Cancel(notice.turn)
 	case methodAgentsDidDecide:
 		return handler.DecidePermission(notice.turn, notice.permission, notice.option)
+	case methodAgentsDidConfig:
+		return handler.SetConfigOption(notice.option, notice.value)
 	default:
 		handler.Exited(notice.exitCode)
 		return nil

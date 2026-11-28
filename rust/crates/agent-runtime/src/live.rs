@@ -18,7 +18,7 @@ use lithe_lsp_engine::agent_host::{AgentBackend, AgentHostFailure};
 use lithe_lsp_transport::process::{LspProcessHandle, LspProcessSpec};
 use lithe_plugin_rpc::{
     codes, AGENTS_DID_CANCEL, AGENTS_DID_DECIDE_PERMISSION, AGENTS_DID_EXIT, AGENTS_DID_OUTPUT,
-    AGENTS_DID_PROMPT, AGENTS_DID_START,
+    AGENTS_DID_PROMPT, AGENTS_DID_SET_CONFIG_OPTION, AGENTS_DID_START,
 };
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_request_context::Source;
@@ -1012,6 +1012,54 @@ pub(crate) fn respond_permission(
             )
         })?;
     Ok(json!({ "turn": turn }))
+}
+
+/// `agents.setConfigOption`: the value the user picked for one of the
+/// session's settings. The backend applies it when the agent can take it,
+/// which may be the next turn, and reports the settings again.
+pub(crate) fn set_config_option(
+    runtime: &Arc<Runtime>,
+    payload: Value,
+) -> Result<Value, CoreError> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ConfigAnswer {
+        session: String,
+        option: String,
+        value: String,
+    }
+    let request: ConfigAnswer = crate::decode(payload)?;
+    require_user("change a setting of")?;
+    let session = runtime.live.session(&request.session)?;
+    session
+        .lock_turns()
+        .check_config(&request.option, &request.value)
+        .map_err(|code| {
+            refusal(
+                ErrorCode::InvalidRequest,
+                code,
+                "The agent did not offer this setting or value.",
+            )
+        })?;
+    runtime
+        .link
+        .notify(
+            &session.backend,
+            AGENTS_DID_SET_CONFIG_OPTION,
+            json!({
+                "session": session.id,
+                "option": request.option,
+                "value": request.value,
+            }),
+        )
+        .map_err(|_| {
+            refusal(
+                ErrorCode::ProcessFailed,
+                "agents.backendUnavailable",
+                "The agent plugin's backend did not take the setting.",
+            )
+        })?;
+    Ok(json!({}))
 }
 
 /// `agents.close`: closes the CLI's input, then ends it if it does not exit.

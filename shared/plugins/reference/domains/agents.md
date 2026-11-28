@@ -4,7 +4,7 @@
 
 ## 中文
 
-插件可以把用户自己安装、自己登录的 Agent 命令行工具接进 Lithe。插件只声明这个 CLI 是哪个工具、可以用哪几种形式运行、会话文件放在哪里；Core 启动和回收 CLI 进程，插件后端只在 CLI 自己的协议和 Lithe 的会话事件之间翻译。插件拿不到 CLI 的凭据，启动结果不能带环境变量；只有用户的操作能开始会话、发送提示和回答权限请求。
+插件可以把用户自己安装、自己登录的 Agent 命令行工具接进 Lithe。插件只声明这个 CLI 是哪个工具、可以用哪几种形式运行、会话文件放在哪里；Core 启动和回收 CLI 进程，插件后端只在 CLI 自己的协议和 Lithe 的会话事件之间翻译。插件拿不到 CLI 的凭据，启动结果不能带环境变量；只有用户的操作能开始会话、发送提示、回答权限请求和修改会话设置。
 
 | 项目 | 内容 |
 | --- | --- |
@@ -22,7 +22,7 @@
 
 | 形式 | 谁做什么 |
 | --- | --- |
-| `native` | Core 调用后端函数拿到命令行（只能是 `{executable: {kind: "tool", tool}, arguments}`，不能带环境变量），自己启动 CLI；CLI 的标准输出经 `lithe/host/agents/didOutput` 交给后端，后端用 `lithe/host/agents/report` 报告会话事件，用 `lithe/host/agents/write` 写 CLI 的标准输入 |
+| `native` | Core 调用后端函数拿到命令行（只能是 `{executable: {kind: "tool", tool}, arguments}`，不能带环境变量），自己启动 CLI；CLI 的标准输出经 `lithe/host/agents/didOutput` 交给后端，后端用 `lithe/host/agents/report` 报告会话事件，用 `lithe/host/agents/write` 写 CLI 的标准输入；后端报告的 `configOptions`（模型、推理等级、模式）由用户在宿主里切换，经 `lithe/host/agents/didSetConfigOption` 交回后端 |
 | `terminal` | 宿主在终端里用声明的参数运行 CLI，用的是 CLI 自己的交互界面 |
 | `acp` | 版本 0 只校验、列入审查和目录，不运行 Agent Client Protocol 客户端；只提供 ACP 的 Agent 应同时声明 `terminal` |
 | `update` | 用户确认命令行后，用声明的参数运行 CLI 的自更新命令 |
@@ -62,7 +62,7 @@
 
 ## English
 
-A plugin can connect an agent command-line tool that the user installed and signed in to themselves. The plugin declares only which tool the CLI is, the forms it can run in, and where it keeps its session files. Core starts and reaps the CLI process; the plugin backend only translates between the CLI's own protocol and Lithe's session events. The plugin never gets the CLI's credentials, and a launch answer cannot carry environment variables. Only the user's actions start a session, send a prompt, or answer a permission request.
+A plugin can connect an agent command-line tool that the user installed and signed in to themselves. The plugin declares only which tool the CLI is, the forms it can run in, and where it keeps its session files. Core starts and reaps the CLI process; the plugin backend only translates between the CLI's own protocol and Lithe's session events. The plugin never gets the CLI's credentials, and a launch answer cannot carry environment variables. Only the user's actions start a session, send a prompt, answer a permission request, or change a session setting.
 
 | Item | Value |
 | --- | --- |
@@ -80,7 +80,7 @@ A plugin can connect an agent command-line tool that the user installed and sign
 
 | Form | Who does what |
 | --- | --- |
-| `native` | Core calls a backend function for the command line (only `{executable: {kind: "tool", tool}, arguments}`, no environment variables) and starts the CLI itself. The CLI's standard output reaches the backend through `lithe/host/agents/didOutput`; the backend reports session events with `lithe/host/agents/report` and writes the CLI's standard input with `lithe/host/agents/write` |
+| `native` | Core calls a backend function for the command line (only `{executable: {kind: "tool", tool}, arguments}`, no environment variables) and starts the CLI itself. The CLI's standard output reaches the backend through `lithe/host/agents/didOutput`; the backend reports session events with `lithe/host/agents/report` and writes the CLI's standard input with `lithe/host/agents/write`. The user switches the `configOptions` the backend reports (model, reasoning level, mode) in the host, and the choice reaches the backend through `lithe/host/agents/didSetConfigOption` |
 | `terminal` | The host runs the CLI with the declared arguments in a terminal: the CLI's own interactive interface |
 | `acp` | Version 0 validates it and lists it in the review and the catalog, but runs no Agent Client Protocol client; an agent that offers only ACP should also declare `terminal` |
 | `update` | After the user confirms the command line, runs the CLI's self-update command with the declared arguments |

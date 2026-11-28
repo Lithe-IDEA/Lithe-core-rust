@@ -617,13 +617,14 @@ func main() {
 
 `AgentSessionStart` carries `Session`, `AgentID`, `Cwd` and `Resume` (the
 CLI's own session ID when the user resumes one, or nil). Embed
-`AgentSessionBase` for empty `Cancel` and `Exited`. `Host().Agents()` offers
+`AgentSessionBase` for empty `Cancel`, `SetConfigOption` and `Exited`. `Host().Agents()` offers
 the same `Write` and `Report` for any session ID, and `Usage(params)` for
 usage totals.
 
 - Each session has its own worker. `didStart` makes the session's handler;
-  the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`
-  and `didExit` then reach it one at a time, in the order Core sent them, so
+  the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`,
+  `didSetConfigOption` and `didExit` then reach it one at a time, in the order
+  Core sent them, so
   a handler may wait for host requests. Other sessions keep running.
 - When making the handler fails, or a prompt fails, the SDK reports
   `turnEnded` with reason `failed` for the turn and logs the failure. Other

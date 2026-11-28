@@ -133,6 +133,7 @@ public final class Protocol {
     public static final String HOST_AGENTS_DID_PROMPT = "lithe/host/agents/didPrompt";
     public static final String HOST_AGENTS_DID_CANCEL = "lithe/host/agents/didCancel";
     public static final String HOST_AGENTS_DID_DECIDE_PERMISSION = "lithe/host/agents/didDecidePermission";
+    public static final String HOST_AGENTS_DID_SET_CONFIG_OPTION = "lithe/host/agents/didSetConfigOption";
     public static final String HOST_AGENTS_DID_EXIT = "lithe/host/agents/didExit";
 
     /** JSON-RPC and LSP error codes the SDK answers with. */

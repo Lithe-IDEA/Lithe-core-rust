@@ -90,6 +90,11 @@ impl AgentSession for Recorder {
         Ok(())
     }
 
+    fn set_config_option(&mut self, option: String, value: String) -> Result<(), FunctionError> {
+        self.record(json!(["setConfigOption", option, value]));
+        Ok(())
+    }
+
     fn exited(&mut self, exit_code: Option<i64>) {
         self.record(json!(["exited", exit_code]));
         if self.session == "agent-2" {

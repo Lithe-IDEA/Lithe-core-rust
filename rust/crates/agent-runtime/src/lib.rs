@@ -18,8 +18,9 @@
 //!
 //! Security rules this crate enforces:
 //!
-//! - Only a request the user started may start a session, send a prompt or
-//!   answer a permission request. Sessions run only in trusted local
+//! - Only a request the user started may start a session, send a prompt,
+//!   answer a permission request or change a session setting. Sessions run
+//!   only in trusted local
 //!   workspaces, at most four per agent.
 //! - The executable is always the agent's declared tool, as the host resolved
 //!   it. The plugin chooses arguments only, never the environment.
@@ -60,6 +61,7 @@ pub const AGENT_COMMANDS: &[&str] = &[
     "agents.prompt",
     "agents.cancel",
     "agents.respondPermission",
+    "agents.setConfigOption",
     "agents.close",
     "agents.waitEvents",
 ];
@@ -115,6 +117,7 @@ impl Runtime {
             "agents.prompt" => live::prompt(self, payload),
             "agents.cancel" => live::cancel(self, payload),
             "agents.respondPermission" => live::respond_permission(self, payload),
+            "agents.setConfigOption" => live::set_config_option(self, payload),
             "agents.close" => live::close(self, payload),
             "agents.waitEvents" => live::wait_events(self, payload),
             "agentSessions.configure" => self.records.configure(payload),

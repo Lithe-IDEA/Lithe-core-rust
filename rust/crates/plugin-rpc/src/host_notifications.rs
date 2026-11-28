@@ -91,6 +91,8 @@ pub const AGENTS_DID_PROMPT: &str = "lithe/host/agents/didPrompt";
 pub const AGENTS_DID_CANCEL: &str = "lithe/host/agents/didCancel";
 /// The user answered a permission request the backend reported.
 pub const AGENTS_DID_DECIDE_PERMISSION: &str = "lithe/host/agents/didDecidePermission";
+/// The user picked a value of a session setting the backend reported.
+pub const AGENTS_DID_SET_CONFIG_OPTION: &str = "lithe/host/agents/didSetConfigOption";
 /// The agent CLI exited.
 pub const AGENTS_DID_EXIT: &str = "lithe/host/agents/didExit";
 
@@ -162,6 +164,12 @@ pub(crate) const HOST_NOTIFICATIONS: &[HostNotification] = &[
     },
     HostNotification {
         method: AGENTS_DID_DECIDE_PERMISSION,
+        service: HOST_SERVICE_AGENTS,
+        grant: Some(AGENTS_WRITE),
+        params: NotificationParams::Agent,
+    },
+    HostNotification {
+        method: AGENTS_DID_SET_CONFIG_OPTION,
         service: HOST_SERVICE_AGENTS,
         grant: Some(AGENTS_WRITE),
         params: NotificationParams::Agent,

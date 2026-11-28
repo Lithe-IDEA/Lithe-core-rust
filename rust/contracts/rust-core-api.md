@@ -487,6 +487,7 @@ or removing a command fails until the table changes in the same commit.
 | `agents.prompt` | Send the user's prompt to a live agent session |
 | `agents.cancel` | Ask the agent backend to cancel the turn in progress |
 | `agents.respondPermission` | Answer a pending agent permission request |
+| `agents.setConfigOption` | Pick a value of a session setting the agent backend reported |
 | `agents.close` | End a live agent session |
 | `agents.waitEvents` | Wait, bounded, for agent session events after a sequence |
 | `agentSessions.configure` | Open the agent session record cache |
