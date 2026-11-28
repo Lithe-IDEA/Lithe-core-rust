@@ -492,7 +492,7 @@ or removing a command fails until the table changes in the same commit.
 | `agentSessions.configure` | Open the agent session record cache |
 | `agentSessions.sync` | Read one agent's changed session files through its plugin |
 | `agentSessions.forget` | Drop one agent's cached session records |
-| `agentSessions.list` | List recorded agent sessions, or find one by its ID |
+| `agentSessions.list` | List a page of recorded agent sessions by directory and order, with their activity and the whole list's counts, or find one by its ID |
 | `agentSessions.search` | Search recorded agent session text |
 | `agentSessions.read` | Read one recorded range as messages and where the next page starts |
 | `agentSessions.stats` | Sum recorded agent usage with the latest rate limits |
