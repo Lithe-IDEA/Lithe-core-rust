@@ -905,6 +905,32 @@ fn detection_applies_plugin_rules_before_nesting_and_reports_their_source() {
     );
 }
 
+/// The manifest preflight counts the encoded bytes of a rule, including negation.
+#[test]
+fn detection_ignore_rule_preflight_validates_syntax_and_utf8_size() {
+    let mut manifest = fixture("build-static-file.plugin.json");
+    let limit = "é".repeat(512);
+    for (rule, valid) in [
+        ("# comment", false),
+        ("!", false),
+        ("! spaced", false),
+        ("!snapshots/", true),
+        (&limit, true),
+        (&format!("!{limit}"), false),
+    ] {
+        manifest["buildSystems"][0]["detection"]["ignoredPaths"] = json!([rule]);
+        let result = validate_command(json!({"manifest": manifest})).unwrap();
+        if valid {
+            assert_eq!(result["status"], "ok", "{result}");
+        } else {
+            assert_eq!(
+                result["error"]["field"], "buildSystems[0].detection.ignoredPaths[0]",
+                "{result}"
+            );
+        }
+    }
+}
+
 #[test]
 fn detection_returns_empty_for_non_directory_and_missing_workspace_roots() {
     let workspace = TemporaryWorkspace::new("build-detect-non-directory");
