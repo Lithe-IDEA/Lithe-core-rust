@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- [宿主 #2485](https://github.com/1lck/Lithe-IDEA/issues/2485)（待合入），`buildSystems` 0 新增可选的 `detection.ignoredPaths`。规则只过滤当前构建系统的候选目录。工作区规则优先。旧宿主拒绝包含新字段的清单。
+- [#218](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/218)（待合入），[@WhiteZeek](https://github.com/WhiteZeek)，`buildSystems` 0 新增可选的 `detection.ignoredPaths`。规则只过滤当前构建系统的候选目录。工作区规则优先。旧宿主拒绝包含新字段的清单。
 
 - [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，新增能力 **`agents` 0**（API-45）：清单 `agents[]` 声明用户自己安装的 Agent CLI、它的运行形式（`native`、`acp`、`terminal`、`update`）和会话来源 `sessionSources`；新增权限 `agents.run`、`agents.native`、`agents.sessions.read`、`agents.usage.read` 与激活事件 `onAgent:<id>`，多声明或少声明都拒绝。`litheFunctions` 0 内新增宿主方法 `agents/write`、`agents/report`、`agents/usage`（Core 直接回答，宿主收不到）和通知 `agents/didStart`、`didOutput`、`didPrompt`、`didCancel`、`didDecidePermission`、`didExit`。Core 新增 `agent-runtime`（启动和回收 CLI 进程、校验会话事件、有界事件队列）与宿主命令 `agents.*`、`agentSessions.*`，会话记录的分组键改为 `sessionID`；安装审查新增 `agent`、`agentSessions` 两类程序；新增 `fixtures/agents/` 两个清单和 23 个拒绝用例，四种官方 SDK 同步封装。版本 0 不运行 ACP 客户端，会话只在可信的本地工作区运行。
 
