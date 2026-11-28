@@ -933,14 +933,30 @@ export interface AgentSessionStart {
 }
 
 /**
+ * One image of a prompt: the type Core read from the file's first bytes and
+ * the file's absolute path. The file may be gone by the time the backend
+ * reads it, so bound what you read.
+ */
+export interface AgentImage {
+  mimeType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  path: string;
+}
+
+/**
  * The plugin's translation of one native session. Each call waits for the
- * one before; a rejected `prompt` ends its turn as failed.
+ * one before; a rejected `prompt` or `promptImages` ends its turn as failed.
  */
 export interface AgentSession {
   /** Lines the CLI wrote to standard output, without line breaks. */
   output(lines: string[]): unknown;
   /** The user's prompt for `turn`; write what the CLI expects. */
   prompt(turn: number, text: string): unknown;
+  /**
+   * The user's prompt for `turn` with images, sent only to an agent whose
+   * manifest declares `native.imageTypes`; `text` may be empty. Hand each
+   * image to the CLI in its own form. Without it, such a turn fails.
+   */
+  promptImages?(turn: number, text: string, images: AgentImage[]): unknown;
   /** The user cancelled `turn`. */
   cancel?(turn: number): unknown;
   /** The user answered permission request `permission` with `option`. */

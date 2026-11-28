@@ -18,6 +18,16 @@ public interface AgentSession {
     /** The user's prompt for {@code turn}; write what the CLI expects. */
     void prompt(long turn, String text) throws Exception;
 
+    /**
+     * The user's prompt for {@code turn} with images, sent only to an agent
+     * whose manifest declares {@code native.imageTypes}; {@code text} may be
+     * empty. Hand each image to the CLI in its own form. Fails the turn unless
+     * overridden.
+     */
+    default void promptImages(long turn, String text, List<AgentImage> images) throws Exception {
+        throw new UnsupportedOperationException("agent_images_unsupported");
+    }
+
     /** The user cancelled {@code turn}. Does nothing unless overridden. */
     default void cancel(long turn) throws Exception {}
 

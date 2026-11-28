@@ -234,6 +234,27 @@ fn catalog_entry_hides_session_functions() {
     assert_eq!(entry["sessionRootVariables"], json!(["SAMPLE_HOME"]));
     assert!(entry.get("sessionSources").is_none());
     assert!(entry.get("native").is_none());
+    assert!(entry.get("imageTypes").is_none());
+}
+
+#[test]
+fn image_types_are_distinct_known_types_and_reach_the_catalog() {
+    let mut value = sample();
+    value["native"]["imageTypes"] = json!(["image/png", "image/webp"]);
+    let mut agents = [agent(value.clone())];
+    check(&mut agents, true).expect("image types validate");
+    let entry = catalog_entry("dev.lithe.test.agents", &agents[0]);
+    assert_eq!(entry["imageTypes"], json!(["image/png", "image/webp"]));
+
+    for types in [
+        json!(["image/png", "image/png"]),
+        json!(["image/svg+xml"]),
+        json!(["IMAGE/PNG"]),
+    ] {
+        let mut refused = value.clone();
+        refused["native"]["imageTypes"] = types;
+        assert_eq!(rejected_field(refused, true), "agents[0].native.imageTypes");
+    }
 }
 
 #[test]

@@ -71,6 +71,15 @@ const DISPOSE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Longest prompt, in bytes.
 const MAX_PROMPT_BYTES: usize = 1024 * 1024;
 
+/// Most images one prompt carries.
+const MAX_PROMPT_IMAGES: usize = 8;
+
+/// Most bytes of all images of one prompt together.
+const MAX_PROMPT_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Bytes Core reads from the start of an image to tell its type.
+const IMAGE_SIGNATURE_BYTES: u64 = 12;
+
 /// Most environment variables the host adds for a CLI.
 const MAX_ENVIRONMENT_VARIABLES: usize = 256;
 
@@ -108,6 +117,8 @@ pub(crate) struct LiveSession {
     pub agent_id: String,
     /// The engine session of the backend that translates this CLI.
     pub backend: String,
+    /// The image types the agent declared when the session started.
+    image_types: Vec<String>,
     started: Instant,
     handle: Arc<dyn LspProcessHandle>,
     input: SyncSender<Vec<String>>,
@@ -561,6 +572,7 @@ fn start_checked(runtime: &Arc<Runtime>, request: StartRequest) -> Result<Value,
         plugin_id: request.plugin_id.clone(),
         agent_id: request.agent_id.clone(),
         backend: backend.clone(),
+        image_types: native.image_types.clone(),
         started: Instant::now(),
         handle: streams.handle.clone(),
         input,
@@ -877,24 +889,106 @@ struct SessionRequest {
     session: String,
 }
 
-/// `agents.prompt`: sends the user's prompt as the next turn.
+/// Checks one prompt image: an absolute path to a regular, non-empty file
+/// whose first bytes name a type Core knows. Answers the type and the size.
+/// The path never reaches logs or refusals; the backend reads the file when
+/// it hands the prompt to the CLI.
+fn check_image(path: &str) -> Result<(&'static str, u64), CoreError> {
+    let invalid = || {
+        refusal(
+            ErrorCode::InvalidRequest,
+            "agents.invalidImage",
+            "An image is an absolute path to a PNG, JPEG, GIF or WebP file.",
+        )
+    };
+    let path = std::path::Path::new(path);
+    if !path.is_absolute() {
+        return Err(invalid());
+    }
+    let file = std::fs::File::open(path).map_err(|_| invalid())?;
+    let metadata = file.metadata().map_err(|_| invalid())?;
+    if !metadata.is_file() || metadata.len() == 0 {
+        return Err(invalid());
+    }
+    let mut head = Vec::with_capacity(IMAGE_SIGNATURE_BYTES as usize);
+    file.take(IMAGE_SIGNATURE_BYTES)
+        .read_to_end(&mut head)
+        .map_err(|_| invalid())?;
+    let mime_type = image_type(&head).ok_or_else(invalid)?;
+    Ok((mime_type, metadata.len()))
+}
+
+/// The type an image's first bytes name, if Core knows it.
+fn image_type(head: &[u8]) -> Option<&'static str> {
+    if head.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if head.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if head.starts_with(b"GIF87a") || head.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if head.len() >= 12 && head.starts_with(b"RIFF") && &head[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
+/// `agents.prompt`: sends the user's prompt, with any images, as the next
+/// turn.
 pub(crate) fn prompt(runtime: &Arc<Runtime>, payload: Value) -> Result<Value, CoreError> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct PromptRequest {
         session: String,
         text: String,
+        #[serde(default)]
+        images: Vec<ImageRequest>,
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ImageRequest {
+        path: String,
     }
     let request: PromptRequest = crate::decode(payload)?;
     require_user("prompt")?;
-    if request.text.trim().is_empty() || request.text.len() > MAX_PROMPT_BYTES {
+    if request.text.len() > MAX_PROMPT_BYTES
+        || (request.text.trim().is_empty() && request.images.is_empty())
+    {
         return Err(refusal(
             ErrorCode::InvalidRequest,
             "agents.invalidPrompt",
-            "A prompt has text of at most 1 MiB.",
+            "A prompt has text of at most 1 MiB, or images.",
+        ));
+    }
+    if request.images.len() > MAX_PROMPT_IMAGES {
+        return Err(refusal(
+            ErrorCode::InvalidRequest,
+            "agents.tooManyImages",
+            "A prompt carries at most 8 images.",
         ));
     }
     let session = runtime.live.session(&request.session)?;
+    let mut images = Vec::with_capacity(request.images.len());
+    let mut total = 0u64;
+    for image in request.images {
+        let (mime_type, size) = check_image(&image.path)?;
+        if !session.image_types.iter().any(|kind| kind == mime_type) {
+            return Err(refusal(
+                ErrorCode::InvalidRequest,
+                "agents.imageTypeUnsupported",
+                "The agent does not take images of this type.",
+            ));
+        }
+        total += size;
+        if total > MAX_PROMPT_IMAGE_BYTES {
+            return Err(refusal(
+                ErrorCode::InvalidRequest,
+                "agents.imagesTooLarge",
+                "The images of one prompt have at most 10 MiB together.",
+            ));
+        }
+        images.push(json!({ "mimeType": mime_type, "path": image.path }));
+    }
     let Some(turn) = session.lock_turns().start_turn() else {
         return Err(refusal(
             ErrorCode::InvalidRequest,
@@ -906,7 +1000,10 @@ pub(crate) fn prompt(runtime: &Arc<Runtime>, payload: Value) -> Result<Value, Co
         .live
         .queue
         .push(&session.id, json!({ "kind": "turnStarted", "turn": turn }));
-    let params = json!({ "session": session.id, "turn": turn, "text": request.text });
+    let mut params = json!({ "session": session.id, "turn": turn, "text": request.text });
+    if !images.is_empty() {
+        params["images"] = json!(images);
+    }
     if runtime
         .link
         .notify(&session.backend, AGENTS_DID_PROMPT, params)

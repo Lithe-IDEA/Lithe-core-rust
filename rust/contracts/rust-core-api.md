@@ -484,7 +484,7 @@ or removing a command fails until the table changes in the same commit.
 | `agents.catalog` | List the configured agents |
 | `agents.sessions` | List the live agent sessions |
 | `agents.start` | Start a native agent session the user asked for |
-| `agents.prompt` | Send the user's prompt to a live agent session |
+| `agents.prompt` | Send the user's prompt, with images the agent accepts, to a live agent session |
 | `agents.cancel` | Ask the agent backend to cancel the turn in progress |
 | `agents.respondPermission` | Answer a pending agent permission request |
 | `agents.setConfigOption` | Pick a value of a session setting the agent backend reported |

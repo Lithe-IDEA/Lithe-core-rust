@@ -589,6 +589,13 @@ backend.onAgentSessions((start, session) -> new AgentSession() {
 `setConfigOption` and `exited` have empty defaults. `host().agents()` offers the same `write` and
 `report` for any session ID, and `usage(params)` for usage totals.
 
+A prompt with images reaches `promptImages(turn, text, images)` instead of
+`prompt`; Core sends one only to an agent whose manifest declares
+`native.imageTypes`, and `text` may then be empty. Each `AgentImage` has the
+`mimeType()` Core read from the file and its absolute `path()`. Hand the
+images to the CLI in its own form, by path or by reading the file with a
+size bound. The default fails the turn.
+
 - Each session has its own worker. `didStart` makes the session's handler;
   the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`,
   `didSetConfigOption` and `didExit` then reach it one at a time, in the order

@@ -78,6 +78,26 @@ type AgentSession interface {
 	Exited(exitCode *int64)
 }
 
+// AgentImage is one image of a prompt: the type Core read from the file's
+// first bytes and the file's absolute path. The file may be gone by the time
+// the backend reads it, so bound what you read.
+type AgentImage struct {
+	// MimeType is image/png, image/jpeg, image/gif or image/webp.
+	MimeType string `json:"mimeType"`
+	// Path is the absolute path of the image file.
+	Path string `json:"path"`
+}
+
+// AgentImagePrompter is the optional method of an [AgentSession] whose agent
+// declares native.imageTypes. A prompt with images reaches PromptImages,
+// where text may be empty; a session without it fails such a turn. A prompt
+// without images still reaches Prompt.
+type AgentImagePrompter interface {
+	PromptImages(turn uint64, text string, images []AgentImage) error
+}
+
+var errNoImages = errors.New("agent session takes no images")
+
 // AgentSessionBase answers Cancel, SetConfigOption and Exited without doing
 // anything.
 type AgentSessionBase struct{}
@@ -168,6 +188,7 @@ type agentNotice struct {
 	lines      []string
 	turn       uint64
 	text       string
+	images     []AgentImage
 	permission string
 	option     string
 	value      string
@@ -279,6 +300,14 @@ func (b *Backend) routeAgentNotification(method string, params map[string]any) {
 			notice.lines = append(notice.lines, text)
 		}
 	}
+	if images, ok := params["images"].([]any); ok {
+		for _, image := range images {
+			fields, _ := image.(map[string]any)
+			mimeType, _ := fields["mimeType"].(string)
+			path, _ := fields["path"].(string)
+			notice.images = append(notice.images, AgentImage{MimeType: mimeType, Path: path})
+		}
+	}
 	if number, ok := params["exitCode"].(json.Number); ok {
 		if code, err := number.Int64(); err == nil {
 			notice.exitCode = &code
@@ -367,7 +396,14 @@ func deliverAgentNotice(handler AgentSession, notice agentNotice) (err error) {
 	case methodAgentsDidOutput:
 		return handler.Output(notice.lines)
 	case methodAgentsDidPrompt:
-		return handler.Prompt(notice.turn, notice.text)
+		if len(notice.images) == 0 {
+			return handler.Prompt(notice.turn, notice.text)
+		}
+		prompter, ok := handler.(AgentImagePrompter)
+		if !ok {
+			return errNoImages
+		}
+		return prompter.PromptImages(notice.turn, notice.text, notice.images)
 	case methodAgentsDidCancel:
 		return handler.Cancel(notice.turn)
 	case methodAgentsDidDecide:

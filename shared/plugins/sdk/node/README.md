@@ -603,6 +603,13 @@ session ID when the user resumes one). `cancel`, `setConfigOption` and
 `backend.host.agents` offers the same `write` and `report` for any session
 ID, and `usage(params)` for usage totals.
 
+A prompt with images reaches the optional `promptImages(turn, text,
+images)` instead of `prompt`; Core sends one only to an agent whose manifest
+declares `native.imageTypes`, and `text` may then be empty. Each image is
+`{ mimeType, path }`: the type Core read from the file and its absolute
+path. Hand the images to the CLI in its own form, by path or by reading the
+file with a size bound. A handler without `promptImages` fails the turn.
+
 - Each session has its own worker. `didStart` makes the session's handler;
   the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`,
   `didSetConfigOption` and `didExit` then reach it one at a time, in the order

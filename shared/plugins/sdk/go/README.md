@@ -621,6 +621,14 @@ CLI's own session ID when the user resumes one, or nil). Embed
 the same `Write` and `Report` for any session ID, and `Usage(params)` for
 usage totals.
 
+A prompt with images reaches `PromptImages(turn, text, images)` of a
+handler that implements `AgentImagePrompter`; Core sends one only to an
+agent whose manifest declares `native.imageTypes`, and `text` may then be
+empty. Each `AgentImage` has the `MimeType` Core read from the file and its
+absolute `Path`. Hand the images to the CLI in its own form, by path or by
+reading the file with a size bound. A handler without `PromptImages` fails
+the turn.
+
 - Each session has its own worker. `didStart` makes the session's handler;
   the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`,
   `didSetConfigOption` and `didExit` then reach it one at a time, in the order

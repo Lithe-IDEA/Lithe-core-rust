@@ -314,8 +314,10 @@ class Backend {
    * `didSetConfigOption` and `didExit` one at a time, in the order Core sent
    * them: each call waits for the promise of the one before. The handler has
    * `output(lines)`, `prompt(turn, text)` and `decidePermission(turn,
-   * permission, option)`, and may have `cancel(turn)`,
-   * `setConfigOption(option, value)` and `exited(exitCode)`.
+   * permission, option)`, and may have `promptImages(turn, text, images)`,
+   * `cancel(turn)`, `setConfigOption(option, value)` and `exited(exitCode)`.
+   * A prompt with images, `[{ mimeType, path }]`, reaches `promptImages`;
+   * a handler without it fails that turn.
    * `handle` has `id`, `host`, `write(lines)` and `report(events)`. When
    * `start` fails, or a prompt fails, the SDK reports `turnEnded` with reason
    * `failed` for the turn. A later registration replaces the earlier one.
@@ -1125,8 +1127,14 @@ async function deliverAgentNotification(handler, method, params, turn) {
   switch (method) {
     case AGENT_NOTIFICATIONS.didOutput:
       return handler.output(Array.isArray(params.lines) ? params.lines.map(text) : []);
-    case AGENT_NOTIFICATIONS.didPrompt:
-      return handler.prompt(turn, text(params.text));
+    case AGENT_NOTIFICATIONS.didPrompt: {
+      const images = Array.isArray(params.images)
+        ? params.images.map((image) => ({ mimeType: text(image?.mimeType), path: text(image?.path) }))
+        : [];
+      if (images.length === 0) return handler.prompt(turn, text(params.text));
+      if (typeof handler.promptImages !== 'function') throw new Error('agent_images_unsupported');
+      return handler.promptImages(turn, text(params.text), images);
+    }
     case AGENT_NOTIFICATIONS.didCancel:
       return handler.cancel?.(turn);
     case AGENT_NOTIFICATIONS.didDecidePermission:

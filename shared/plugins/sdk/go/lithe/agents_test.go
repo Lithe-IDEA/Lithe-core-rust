@@ -70,6 +70,11 @@ func (r *recorder) Prompt(turn uint64, text string) error {
 	return nil
 }
 
+func (r *recorder) PromptImages(turn uint64, text string, images []lithe.AgentImage) error {
+	r.record("prompt", turn, text, images)
+	return nil
+}
+
 func (r *recorder) Cancel(turn uint64) error {
 	r.record("cancel", turn)
 	return nil
