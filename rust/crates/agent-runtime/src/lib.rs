@@ -75,6 +75,7 @@ pub const AGENT_SESSION_COMMANDS: &[&str] = &[
     "agentSessions.search",
     "agentSessions.read",
     "agentSessions.stats",
+    "agentSessions.calls",
 ];
 
 /// The agent catalog, the live sessions and the session records.
@@ -127,6 +128,7 @@ impl Runtime {
             "agentSessions.search" => self.records.search(self, payload),
             "agentSessions.read" => self.records.read(self, payload),
             "agentSessions.stats" => self.records.stats(self, payload),
+            "agentSessions.calls" => self.records.calls(self, payload),
             _ => Err(CoreError::new(
                 ErrorCode::NotSupported,
                 format!("Unknown agent command {command}."),

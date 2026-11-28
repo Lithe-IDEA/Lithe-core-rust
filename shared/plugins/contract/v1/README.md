@@ -3984,6 +3984,20 @@ Lithe list, search and sum them without the CLI running:
   groupBy, utcOffsetSeconds}` serve the host's own views; `agent` is
   `<pluginID>/<agentID>`, and `stats` groups by `day`, `agent`, `model`,
   `session` or `cwd`.
+- `agentSessions.calls {agents?, sessionID?, sinceMs?, untilMs?, model?,
+  failed?, offset?, limit}` serves the host's request table: the calls the
+  filter keeps, most recent first, `limit` 1–500 at an `offset` of at most
+  50000, with `total`, how many the filter keeps. `model` matches the model
+  that answered, or the one asked for when the answer did not name it;
+  `failed` keeps only failed (`true`) or only successful (`false`) calls. Each
+  row gives `agent`, `pluginID`, `agentID`, `path`, `cwd?` and `call`, the
+  call as `scan` reported it, plus what Core derives: `cost {usd,
+  approximate}` at API prices when the model is priced, `cacheHitRate` when
+  the call reports a cache count, and `speed {kind: measured|atLeast,
+  tokensPerSecond}` when its timing allows. `path` and `call.range` are what
+  `agentSessions.read` takes to show the call's messages. Another page or
+  limit refuses with `agentSessions.invalidPage`. It was added within
+  `agents` 0; an older Core refuses it as an unknown command.
 - A listed session gives `readBytes`, how many bytes of `path` the cache has
   read; a read range ends at most there and spans at most 16 MiB. `read`
   answers `{changed, messages, end}`. `end` is where the next page starts: the

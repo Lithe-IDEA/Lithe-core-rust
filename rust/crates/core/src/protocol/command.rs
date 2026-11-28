@@ -255,6 +255,8 @@ pub enum AgentsCommand {
     RecordsRead,
     /// Sums recorded usage with the latest rate limits (`agentSessions.stats`).
     RecordsStats,
+    /// Lists a page of recorded calls, most recent first (`agentSessions.calls`).
+    RecordsCalls,
 }
 
 impl AgentsCommand {
@@ -278,6 +280,7 @@ impl AgentsCommand {
             Self::RecordsSearch => "agentSessions.search",
             Self::RecordsRead => "agentSessions.read",
             Self::RecordsStats => "agentSessions.stats",
+            Self::RecordsCalls => "agentSessions.calls",
         }
     }
 }
@@ -1273,6 +1276,7 @@ impl CoreCommand {
             "agentSessions.search" => Some(Self::Agents(AgentsCommand::RecordsSearch)),
             "agentSessions.read" => Some(Self::Agents(AgentsCommand::RecordsRead)),
             "agentSessions.stats" => Some(Self::Agents(AgentsCommand::RecordsStats)),
+            "agentSessions.calls" => Some(Self::Agents(AgentsCommand::RecordsCalls)),
             "plugins.declarative.validate" => {
                 Some(Self::Plugins(PluginsCommand::DeclarativeValidate))
             }

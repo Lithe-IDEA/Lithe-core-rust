@@ -18,10 +18,10 @@ use crate::backend::BackendLink;
 use crate::catalog::{record_key, split_record_key, CatalogAgent};
 use crate::events::{check_rate_limits, RateLimits, RateWindow, MAX_RATE_WINDOWS};
 use crate::{log, now_ms, Runtime};
-use lithe_agent_sessions::pricing::PriceTable;
-use lithe_agent_sessions::stats::{GroupBy, SpeedRanker, Summarizer};
+use lithe_agent_sessions::pricing::{call_cost, PriceTable};
+use lithe_agent_sessions::stats::{call_speed, model_name, GroupBy, SpeedRanker, Summarizer};
 use lithe_agent_sessions::{
-    discover, ByteRange, CallFilter, ScanChunk, ScanOutput, SearchQuery, SessionFilter,
+    discover, ByteRange, CallEntry, CallFilter, ScanChunk, ScanOutput, SearchQuery, SessionFilter,
     SessionOrder, SessionParser, SessionSource, SessionStore, MAX_FILTER_DIRECTORIES,
     MAX_SEARCH_HITS, MAX_SESSIONS_PAGE,
 };
@@ -31,7 +31,7 @@ use lithe_plugin_rpc::codes;
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError, RwLock};
@@ -54,6 +54,13 @@ const MAX_MESSAGE_TEXT_BYTES: usize = 1024 * 1024;
 
 /// Longest range `lithe/host/agents/usage` sums, in days.
 const MAX_USAGE_DAYS: i64 = 366;
+
+/// Most calls one `agentSessions.calls` page returns.
+const MAX_CALLS_PAGE: usize = 500;
+
+/// Largest `offset` `agentSessions.calls` takes, which bounds the calls it
+/// keeps while it walks the cache.
+const MAX_CALLS_OFFSET: usize = 50_000;
 
 /// Longest directory `agentSessions.list`'s `cwdUnder` takes, in bytes.
 const MAX_FILTER_DIRECTORY_BYTES: usize = 4096;
@@ -678,6 +685,89 @@ impl Records {
         }))
     }
 
+    /// `agentSessions.calls`: one page of the readable agents' calls for the
+    /// host's request table, most recent first, each with what it would cost
+    /// at API prices, its cache hit rate and its output speed. `total` counts
+    /// every call the filter keeps.
+    pub fn calls(&self, runtime: &Runtime, payload: Value) -> Result<Value, CoreError> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase", deny_unknown_fields)]
+        struct CallsRequest {
+            #[serde(default)]
+            agents: Option<Vec<String>>,
+            #[serde(rename = "sessionID", default)]
+            session_id: Option<String>,
+            #[serde(default)]
+            since_ms: Option<i64>,
+            #[serde(default)]
+            until_ms: Option<i64>,
+            #[serde(default)]
+            model: Option<String>,
+            #[serde(default)]
+            failed: Option<bool>,
+            #[serde(default)]
+            offset: usize,
+            limit: usize,
+        }
+        let request: CallsRequest = crate::decode(payload)?;
+        if request.limit == 0 || request.limit > MAX_CALLS_PAGE || request.offset > MAX_CALLS_OFFSET
+        {
+            return Err(refusal(
+                ErrorCode::InvalidRequest,
+                "agentSessions.invalidPage",
+                "Ask for 1 to 500 calls at an offset of at most 50000.",
+            ));
+        }
+        let Some(agents) = allowed_agents(runtime, request.agents) else {
+            return Ok(json!({ "calls": [], "total": 0 }));
+        };
+        let filter = CallFilter {
+            agents,
+            session_id: request.session_id,
+            since_ms: request.since_ms,
+            until_ms: request.until_ms,
+        };
+        // The store visits calls oldest first; the page is the newest
+        // `offset + limit` of them, so only that many are kept.
+        let keep = request.offset + request.limit;
+        let mut newest = VecDeque::with_capacity(keep.min(MAX_CALLS_PAGE * 2));
+        let mut total = 0u64;
+        {
+            let reader = self.lock_reader();
+            let store = reader.as_ref().ok_or_else(not_configured)?;
+            store.for_each_call(&filter, |entry| {
+                let call = &entry.call;
+                if request
+                    .model
+                    .as_deref()
+                    .is_some_and(|model| model_name(call) != Some(model))
+                {
+                    return Ok(());
+                }
+                if request
+                    .failed
+                    .is_some_and(|failed| call.error_category.is_some() != failed)
+                {
+                    return Ok(());
+                }
+                total += 1;
+                if newest.len() == keep {
+                    newest.pop_front();
+                }
+                newest.push_back(entry);
+                Ok(())
+            })?;
+        }
+        let prices = self.prices.read().unwrap_or_else(PoisonError::into_inner);
+        let calls: Vec<Value> = newest
+            .into_iter()
+            .rev()
+            .skip(request.offset)
+            .map(|entry| call_row(entry, prices.as_ref()))
+            .collect();
+        Ok(json!({ "calls": calls, "total": total }))
+    }
+
     /// The summaries of the calls `filter` selects, grouped by `group_by`,
     /// and the models ranked by median output speed over the same calls.
     fn summarize(
@@ -919,6 +1009,54 @@ fn allowed_agents(runtime: &Runtime, requested: Option<Vec<String>>) -> Option<V
         None => readable,
     };
     (!agents.is_empty()).then_some(agents)
+}
+
+/// One row of `agentSessions.calls`: the call as the cache holds it, the agent
+/// split into plugin and agent IDs, and what Core derives from it. `cost` is
+/// absent without a price for the model or without the input and output
+/// counts; `cacheHitRate` is absent when the call reports no cache count.
+fn call_row(entry: CallEntry, prices: Option<&PriceTable>) -> Value {
+    let call = &entry.call;
+    let cost = prices
+        .and_then(|prices| {
+            model_name(call).and_then(|model| prices.lookup(call.provider.as_deref(), model))
+        })
+        .and_then(|price| call_cost(price, &call.tokens))
+        .map(|cost| json!({ "usd": cost.usd, "approximate": cost.approximate }));
+    let tokens = &call.tokens;
+    let cache_hit_rate = tokens.reports_cache().then(|| {
+        let read = tokens.cache_read.unwrap_or(0);
+        let prompt = [
+            tokens.input,
+            Some(read),
+            tokens.cache_write_5m,
+            tokens.cache_write_1h,
+        ]
+        .into_iter()
+        .flatten()
+        .fold(0u64, u64::saturating_add);
+        (prompt > 0).then(|| read as f64 / prompt as f64)
+    });
+    let speed = call_speed(call);
+    let mut row = json!({
+        "agent": entry.agent,
+        "path": entry.path,
+        "call": call,
+    });
+    add_agent_ids(&mut row, &entry.agent);
+    if let Some(cwd) = &entry.cwd {
+        row["cwd"] = json!(cwd);
+    }
+    if let Some(cost) = cost {
+        row["cost"] = cost;
+    }
+    if let Some(Some(rate)) = cache_hit_rate {
+        row["cacheHitRate"] = json!(rate);
+    }
+    if let Some(speed) = speed {
+        row["speed"] = json!(speed);
+    }
+    row
 }
 
 fn add_agent_ids(value: &mut Value, key: &str) {

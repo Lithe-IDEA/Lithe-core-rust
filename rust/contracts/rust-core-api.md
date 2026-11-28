@@ -497,6 +497,7 @@ or removing a command fails until the table changes in the same commit.
 | `agentSessions.search` | Search recorded agent session text |
 | `agentSessions.read` | Read one recorded range as messages and where the next page starts |
 | `agentSessions.stats` | Sum recorded agent usage with the latest rate limits |
+| `agentSessions.calls` | List a page of recorded agent calls, most recent first, with their cost, cache hit rate and speed |
 | `plugins.declarative.validate` | Validate and normalize a declarative plugin manifest |
 | `plugins.ui.applyResult` | Check a backend result for a plugin view and return the whole view to draw |
 | `plugins.web.open` | Register a plugin page for a web tool window |
