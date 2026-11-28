@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 
 const GRAPH_PROJECTION_VERSION: u32 = 1;
 /// Largest commit list (scoped window or repository context) one request may carry: the
@@ -197,6 +198,8 @@ pub struct GraphPrintElement {
     pub is_terminal: bool,
     /// Loaded visible endpoint; missing history never invents a target.
     pub target_hash: Option<String>,
+    /// Positive, projection-local ID of the visible chain this half-edge belongs to.
+    pub hover_chain: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -221,6 +224,9 @@ pub struct GraphRow {
     pub labels: Vec<GraphLabel>,
     /// Explicit half-edges for this row.
     pub print_elements: Vec<GraphPrintElement>,
+    /// Present at a commit with one visible child and one loaded visible parent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hover_chain: Option<NonZeroUsize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1102,8 +1108,23 @@ fn build_rows(
         }
     }
 
+    let mut edge_hover_chains = (1..=edges.len()).collect::<Vec<_>>();
     let mut rows = Vec::with_capacity(row_count);
     for row in 0..row_count {
+        // Child-before-parent order means incoming edges are assigned first. A
+        // node transfers the chain only when it joins two visible endpoints.
+        let hover_chain = match adjacent[row].as_slice() {
+            &[incoming, outgoing]
+                if edges[incoming].down == Some(row)
+                    && edges[outgoing].up == row
+                    && edges[outgoing].down.is_some() =>
+            {
+                let chain = edge_hover_chains[incoming];
+                edge_hover_chains[outgoing] = chain;
+                NonZeroUsize::new(chain)
+            }
+            _ => None,
+        };
         let mut prints = Vec::new();
         for (position, element) in elements[row].iter().enumerate() {
             let own = [match element {
@@ -1168,6 +1189,7 @@ fn build_rows(
                             };
                             layout.commits[layout.visible[target]].hash.clone()
                         }),
+                        hover_chain: edge_hover_chains[id],
                     });
                 }
             }
@@ -1203,6 +1225,7 @@ fn build_rows(
                 .collect(),
             labels: labels[node].clone(),
             print_elements: prints,
+            hover_chain,
         });
     }
     GraphProjection {

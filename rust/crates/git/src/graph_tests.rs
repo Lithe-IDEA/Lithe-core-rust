@@ -82,6 +82,7 @@ fn assert_continuity(projection: &GraphProjection) {
                         && candidate.adjacent_position == element.position
                         && candidate.color_id == element.color_id
                         && candidate.is_dotted == element.is_dotted
+                        && candidate.hover_chain == element.hover_chain
                 }),
                 "row {row}: {} has no matching half in row {next}",
                 element.id
@@ -338,6 +339,57 @@ fn real_history_matches_intellij_for_page_context_and_date_order() {
 }
 
 // MARK: - topology and routing
+
+#[test]
+fn hover_chains_stop_at_forks_merges_and_unloaded_parents() {
+    let projection = layout(vec![
+        commit("tip", &["merge"], ""),
+        commit("merge", &["left", "right"], ""),
+        commit("left", &["base"], ""),
+        commit("right", &["base"], ""),
+        commit("base", &["ordinary"], ""),
+        commit("ordinary", &["loaded"], ""),
+        commit("loaded", &["missing"], ""),
+        commit("other", &[], ""),
+    ]);
+    let nodes = projection
+        .rows
+        .iter()
+        .filter_map(|row| {
+            row.hover_chain
+                .map(|id| (row.commit_hash.as_str(), id.get()))
+        })
+        .collect::<HashMap<_, _>>();
+    assert_eq!(nodes.len(), 3);
+    let mut assigned = HashMap::new();
+    for print in projection.rows.iter().flat_map(|row| &row.print_elements) {
+        let (edge, _) = print.id.rsplit_once(':').unwrap();
+        if let Some(previous) = assigned.insert(edge, print.hover_chain) {
+            assert_eq!(previous, print.hover_chain, "{edge}");
+        }
+    }
+    for (edge, node) in [
+        ("1:2:false", "left"),
+        ("2:4:false", "left"),
+        ("1:3:false", "right"),
+        ("3:4:false", "right"),
+        ("4:5:false", "ordinary"),
+        ("5:6:false", "ordinary"),
+    ] {
+        assert_eq!(assigned[edge], nodes[node], "{edge} / {node}");
+    }
+    assert_eq!(
+        BTreeSet::from([
+            assigned["0:1:false"],
+            nodes["left"],
+            nodes["right"],
+            nodes["ordinary"],
+            assigned["6:missing:false"],
+        ])
+        .len(),
+        5
+    );
+}
 
 #[test]
 fn long_edges_compact_at_thirty_rows_and_keep_both_destinations() {
