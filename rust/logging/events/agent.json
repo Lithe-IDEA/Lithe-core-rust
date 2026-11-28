@@ -95,6 +95,19 @@
       },
       "rate": 60,
       "owner": "lithe-core"
+    },
+    {
+      "id": "agent.records.inspected",
+      "channel": "agent",
+      "level": "info",
+      "message": "An MCP client searched or read agent session records",
+      "fields": {
+        "tool": {"type": "token", "required": true, "description": "IDE tool the MCP client called, lithe_sessions_search or lithe_sessions_read; never the query, session ID or content"},
+        "results": {"type": "int", "required": true, "description": "Hits or messages answered"},
+        "duration": {"type": "duration", "required": true, "description": "Milliseconds the call took"}
+      },
+      "rate": 60,
+      "owner": "Lithe"
     }
   ]
 }

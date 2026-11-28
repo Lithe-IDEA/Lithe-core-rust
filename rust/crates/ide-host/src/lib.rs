@@ -748,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn a_host_without_a_declaration_opens_and_serves_the_whole_catalog() {
+    fn a_host_without_a_declaration_opens_and_serves_the_catalog_except_session_tools() {
         let root = std::env::temp_dir().join(format!("lithe-ide-undeclared-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let helper = root.join("helper");
@@ -774,15 +774,38 @@ mod tests {
             serde_json::from_slice(&std::fs::read(connection).unwrap()).unwrap();
         assert!(descriptor.get("toolExposure").is_none());
         let served: Connection = serde_json::from_value(descriptor).unwrap();
+        let tools = catalog::served_tools(served.tool_exposure.as_deref()).unwrap();
+        let mut expected = catalog::tools();
+        expected.retain(|tool| {
+            !catalog::DECLARED_ONLY
+                .iter()
+                .any(|name| tool["name"] == *name)
+        });
+        assert_eq!(tools, expected);
         assert_eq!(
-            catalog::served_tools(served.tool_exposure.as_deref()).unwrap(),
-            catalog::tools()
+            tools.len() + catalog::DECLARED_ONLY.len(),
+            catalog::tools().len()
         );
         let permissions = catalog::Permissions {
             configure: true,
             execute: true,
         };
         assert!(catalog::validate_served("lithe_run_list", &json!({}), &permissions, None).is_ok());
+        // The session tools read the user's agent sessions; a host that declares
+        // nothing has not said the user allows it, so they are refused.
+        for (name, arguments) in [
+            ("lithe_sessions_search", json!({"query":"retry"})),
+            (
+                "lithe_sessions_read",
+                json!({"sessionID":"fixture-session"}),
+            ),
+        ] {
+            assert_eq!(
+                catalog::validate_served(name, &arguments, &permissions, None).unwrap_err()
+                    ["error"]["code"],
+                "NOT_SUPPORTED"
+            );
+        }
     }
 
     async fn notification(rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>) -> Option<String> {
