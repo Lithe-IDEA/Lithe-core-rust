@@ -3957,8 +3957,8 @@ Lithe list, search and sum them without the CLI running:
   `unreadableEntries`. Lines reach `scan` in chunks of at most 4 MiB; a line
   longer than 16 MiB is skipped. `agentSessions.forget {pluginID, agentID}`
   drops the agent's records and answers `{files}`.
-- `agentSessions.list {agents?, cwd?, sessionID?, activeSinceMs?, offset,
-  limit, titles}` (at most 500), `agentSessions.search {text, agents?,
+- `agentSessions.list {agents?, cwd?, cwdUnder?, sessionID?, activeSinceMs?,
+  order?, offset, limit, titles, counts?}` (at most 500), `agentSessions.search {text, agents?,
   sessionID?, limit}` (at most 200), `agentSessions.read {agent, path,
   range}` and `agentSessions.stats {agents?, sessionID?, sinceMs?, untilMs?,
   groupBy, utcOffsetSeconds}` serve the host's own views; `agent` is
@@ -3978,6 +3978,27 @@ Lithe list, search and sum them without the CLI running:
   that predates them refuses `sessionID` as an unknown field, answers neither
   `readBytes` nor `end`, and may hand `read` a range that ends inside a line;
   the backend skips a line that is not a whole JSON value.
+- `cwdUnder` keeps the sessions whose `cwd` is one of at most 64 directories
+  or lies below one; each is 1–4096 bytes without control characters, and a
+  trailing `/` or `\` changes nothing. A session without `cwd` is under none.
+  `order` is `updated` (the default: most recently active first) or
+  `started` (most recently started first). With `counts: true` the answer
+  also gives `total`, how many sessions the filter keeps regardless of
+  `offset` and `limit`, and `groups`: `{cwd?, count, updatedAtMs?}` per
+  directory, most recently active first, at most 500, with
+  `groupsTruncated` true when more exist.
+- A listed session also gives `messageCount`, how many searchable spans the
+  backend reported for the session in its own file (a subagent's file counts
+  toward neither); `lastMessageRange`, the range of the last of them, which
+  `agentSessions.read` turns into that message; `subagentCount`, how many
+  distinct `threadID`s its calls carry; and `model`, the `model` or else
+  `requestedModel` of its latest main-thread call, or of its latest call
+  when every call carries a `threadID`. Core keeps no conversation text for
+  them: the message is read from the file on request.
+- `cwdUnder`, `order`, `counts` and the four session fields above were added
+  within `agents` 0. A Core that predates them refuses the three fields as
+  unknown and answers none of the four session fields; a host shows the list
+  without them.
 
 `scan` receives `{agentID, sourceID, path, lines: [{offset, length, text}],
 state?}` and has 30 seconds. It answers:

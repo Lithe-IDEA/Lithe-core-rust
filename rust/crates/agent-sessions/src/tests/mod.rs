@@ -102,7 +102,10 @@ impl SessionParser for LinesParser {
                         parent_session_id: text("parent"),
                         cwd: text("cwd"),
                         started_at_ms: value.get("at").and_then(Value::as_i64),
-                        updated_at_ms: value.get("at").and_then(Value::as_i64),
+                        updated_at_ms: value
+                            .get("updated")
+                            .or_else(|| value.get("at"))
+                            .and_then(Value::as_i64),
                         agent_version: text("version"),
                         title_range: value.get("title").map(|_| range),
                     });
@@ -113,7 +116,7 @@ impl SessionParser for LinesParser {
                 Some("call") => output.calls.push(CallRecord {
                     key: text("key").expect("call key"),
                     session_id: session.clone().expect("a session line first"),
-                    thread_id: None,
+                    thread_id: text("thread"),
                     started_at_ms: value.get("at").and_then(Value::as_i64).expect("call time"),
                     requested_model: text("requested"),
                     model: text("model"),
