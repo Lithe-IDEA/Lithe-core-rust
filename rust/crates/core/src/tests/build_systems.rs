@@ -925,7 +925,10 @@ fn detection_returns_empty_for_non_directory_and_missing_workspace_roots() {
         assert_eq!(outcome["status"], "ok", "{}: {outcome}", root.display());
         assert_eq!(
             outcome["detection"],
-            json!({"instances": [], "rejected": [], "shadowed": []}),
+            json!({"instances": [], "rejected": [], "shadowed": [], "pluginIgnoredPaths": [{
+                "pluginID": "dev.lithe.fixture.build-static-file", "buildSystemID": "cargo",
+                "displayName": "Cargo", "patterns": ["snapshots/"]
+            }]}),
             "{}",
             root.display(),
         );
