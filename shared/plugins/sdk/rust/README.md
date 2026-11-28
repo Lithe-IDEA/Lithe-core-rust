@@ -709,13 +709,14 @@ fn main() {
 ```
 
 `AgentSessionStart` carries `session`, `agent_id`, `cwd` and `resume` (the
-CLI's own session ID when the user resumes one). `cancel` and `exited` have
-empty defaults. `handle.host().agents()` offers the same `write` and `report`
+CLI's own session ID when the user resumes one). `cancel`,
+`set_config_option` and `exited` have empty defaults. `handle.host().agents()` offers the same `write` and `report`
 for any session ID, and `usage(params)` for usage totals.
 
 - Each session has its own worker. `didStart` makes the session's handler;
-  the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`
-  and `didExit` then reach it one at a time, in the order Core sent them, so
+  the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`,
+  `didSetConfigOption` and `didExit` then reach it one at a time, in the order
+  Core sent them, so
   a handler may wait for host requests. Other sessions keep running.
 - When making the handler fails, or a prompt fails, the SDK reports
   `turnEnded` with reason `failed` for the turn and logs the failure. Other

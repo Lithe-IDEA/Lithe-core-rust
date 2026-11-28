@@ -25,6 +25,14 @@ public interface AgentSession {
     void decidePermission(long turn, String permission, String option) throws Exception;
 
     /**
+     * The user picked {@code value} for the session setting {@code option},
+     * one the backend reported in a {@code configOptions} event. Apply it when
+     * the CLI can take it and report the settings again. Does nothing unless
+     * overridden.
+     */
+    default void setConfigOption(String option, String value) throws Exception {}
+
+    /**
      * The CLI ended, with its exit code when it had one; the session gets no
      * further calls. Does nothing unless overridden.
      */

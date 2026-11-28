@@ -522,12 +522,13 @@ func (b *Backend) hostNotification(method string, params any) {
 	if !s.functionsNegotiated() || !ok {
 		return
 	}
+	if isAgentNotification(method) {
+		b.routeAgentNotification(method, object)
+		return
+	}
 	switch method {
 	case methodNotify:
 		s.deliver(object)
-	case methodAgentsDidStart, methodAgentsDidOutput, methodAgentsDidPrompt,
-		methodAgentsDidCancel, methodAgentsDidDecide, methodAgentsDidExit:
-		b.routeAgentNotification(method, object)
 	case methodCommandRan:
 		commandID, _ := object["commandID"].(string)
 		handler := b.commands[commandID]
