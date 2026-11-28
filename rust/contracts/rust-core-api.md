@@ -740,6 +740,8 @@ or removing a command fails until the table changes in the same commit.
 | `editor.lineEdit` | Apply a deterministic line-level text transform and return the replacement plus selection to restore |
 | `editor.copyReferenceLocation` | Format a one-based line reference from normalized document symbols; fall back to a file path when no containing symbol exists |
 | `editor.find` | Find text or plans bounded replacements in a borrowed document |
+| `editor.renderDocComment` | Parse one confirmed documentation comment slice (Javadoc-HTML, Markdown-HTML, or HTML) into bounded native document IR |
+| `editor.renderHoverDoc` | Parse one hover payload (`plaintext` or Markdown with embedded HTML) into bounded native document IR |
 | `editor.preferences.resolve` | Resolve persisted editor presentation preferences |
 | `editor.rainbowBrackets` | Match bounded structural bracket tokens and assign their nesting depths |
 | `editor.rainbowVariables` | Assign stable palette values to bounded variable tokens |
@@ -8777,7 +8779,12 @@ replacement fails atomically. Invalid requests return `invalid_request` with sta
 `source_too_large`, `source_too_large_or_invalid`, `replacement_too_large`, `too_many_matches`.
 Source, query and replacement are never included in errors or diagnostic logs.
 
+`editor.renderDocComment` executes through `lithe_core_execute_document_json(request, bytes, length)` (or inline `payload.source` for fixtures). Payload fields: `shellKind` (`block-star`, `line-slash`, `raw`), `dialect` (`javadoc-html`, `markdown-html`, `html`, `markdown`), and optional `language`. Core strips the comment shell according to dialect, preserves protected inline tags (`{@code}`, `{@literal}`, `{@link}`, `{@linkplain}`) across HTML5 fragment parsing via a bounded `html5ever` `TreeSink`, and returns `{ fallbackToSource, fallbackReason?, blocks, anchors }`. Exceeding input (64 KiB), DOM node (2048), depth (16), text (128 KiB), or IR budgets, or failing slot fidelity checks, returns `fallbackToSource: true` with a stable `fallbackReason` so the host keeps showing raw source.
+
+`editor.renderHoverDoc` parses a hover payload (`isMarkdown`, optional `language`, and borrowed bytes or `contents`) into the same structured native IR. Plaintext (`isMarkdown: false`) is returned verbatim as a single code block without HTML or Markdown interpretation. Markdown (`isMarkdown: true`) recursively expands Comrak container and inline nodes while escaping text nodes, protects code spans and code blocks in opaque slots, merges embedded raw HTML via the bounded `html5ever` `TreeSink`, and falls back directly from the unmodified Comrak AST if a budget or fidelity check fails. Shared vectors: `rust/fixtures/editor/doc-render-v1.json`.
+
 `editor.preferences.resolve` accepts optional `lineNumbers`, `whitespace`, `inlayHints`,
+`renderDocComments`, `renderDocCommentsInReadOnly`,
 `indentGuides`, `rainbowIndentGuides`,
 `cursorStyle` (`line`, `block`, `underline`), `cursorBlink`, `autoSaveDelayMilliseconds`,
 `rainbowBrackets`, `rainbowVariables`, `rainbowLightColors` and

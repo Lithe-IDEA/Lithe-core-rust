@@ -1119,8 +1119,11 @@ dependencies = [
 name = "lithe-editor"
 version = "0.1.0"
 dependencies = [
+ "comrak",
+ "html5ever",
  "lithe-protocol",
  "lithe-text",
+ "markup5ever",
  "regex",
  "serde",
  "serde_json",

@@ -734,6 +734,10 @@ pub enum EditorCommand {
     CopyReferenceLocation,
     /// Finds text or plans bounded replacements in a borrowed document (`editor.find`).
     Find,
+    /// Parses one confirmed documentation comment slice into structured native IR (`editor.renderDocComment`).
+    RenderDocComment,
+    /// Parses one hover payload into structured native IR (`editor.renderHoverDoc`).
+    RenderHoverDoc,
     /// Resolves persisted editor presentation preferences (`editor.preferences.resolve`).
     PreferencesResolve,
     /// Assigns nesting depths to structural bracket tokens (`editor.rainbowBrackets`).
@@ -1645,6 +1649,8 @@ impl CoreCommand {
                 Some(Self::Editor(EditorCommand::CopyReferenceLocation))
             }
             "editor.find" => Some(Self::Editor(EditorCommand::Find)),
+            "editor.renderDocComment" => Some(Self::Editor(EditorCommand::RenderDocComment)),
+            "editor.renderHoverDoc" => Some(Self::Editor(EditorCommand::RenderHoverDoc)),
             "editor.preferences.resolve" => Some(Self::Editor(EditorCommand::PreferencesResolve)),
             "editor.rainbowBrackets" => Some(Self::Editor(EditorCommand::RainbowBrackets)),
             "editor.rainbowVariables" => Some(Self::Editor(EditorCommand::RainbowVariables)),
