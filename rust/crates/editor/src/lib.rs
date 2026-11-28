@@ -6,6 +6,7 @@
 //! engine. The `editor.*` JSON commands are dispatched by `lithe-core`.
 
 pub mod doc_render;
+pub mod file_type_mappings;
 pub mod find;
 pub mod line_edit;
 pub mod navigation_history;

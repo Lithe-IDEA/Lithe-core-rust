@@ -61,6 +61,16 @@ pub(super) fn dispatch(
                 }
             })
         }),
+        EditorCommand::FileTypeMappingsNormalize => plugin_response(
+            id,
+            payload,
+            lithe_editor::file_type_mappings::normalize_command,
+        ),
+        EditorCommand::FileTypeMappingsResolve => plugin_response(
+            id,
+            payload,
+            lithe_editor::file_type_mappings::resolve_command,
+        ),
         EditorCommand::RainbowBrackets => {
             plugin_response(id, payload, lithe_editor::rainbow_brackets::color_command)
         }
