@@ -10,8 +10,8 @@ use super::{append, call_line, session_line, text_line, LinesParser, TempDir};
 use crate::ingest::ChunkLimits;
 use crate::model::ByteRange;
 use crate::store::{
-    database_file_name, CallEntry, CallFilter, SearchHit, SearchQuery, SessionEntry, SessionFilter,
-    SessionStore, SyncReport,
+    database_file_name, CallEntry, CallFilter, SearchHit, SearchQuery, SessionCounts, SessionEntry,
+    SessionFilter, SessionGroup, SessionOrder, SessionStore, SyncReport, MAX_FILTER_DIRECTORIES,
 };
 use crate::{MAX_CHUNK_BYTES, MAX_LINE_BYTES};
 
@@ -870,4 +870,206 @@ fn old_and_damaged_caches_are_rebuilt() {
     assert!(calls(&store, &CallFilter::default()).is_empty());
     sync_as(&mut store, AGENT, &[session]);
     assert_eq!(keys(&calls(&store, &CallFilter::default())), ["c1"]);
+}
+
+fn thread_call_line(key: &str, at: i64, model: &str, thread: &str) -> String {
+    format!(
+        "{}\n",
+        json!({ "type": "call", "key": key, "at": at, "model": model, "thread": thread })
+    )
+}
+
+fn session_at(id: &str, cwd: Option<&str>, started: i64, updated: i64) -> String {
+    let mut line = json!({ "type": "session", "id": id, "at": started, "updated": updated });
+    if let Some(cwd) = cwd {
+        line["cwd"] = json!(cwd);
+    }
+    format!("{line}\n")
+}
+
+#[test]
+fn listed_sessions_count_messages_and_subagents_and_name_the_main_model() {
+    let mut fixture = Fixture::new("activity");
+    let main = fixture.file("a.jsonl");
+    let subagent = fixture.file("b.jsonl");
+    let only_subagents = fixture.file("c.jsonl");
+    let quiet = fixture.file("d.jsonl");
+    let opening = session_line("s1", "/w", 1_000)
+        + &text_line(1_000, "the prompt")
+        + &call_line("c1", 1_100, "main-old", 1, 2)
+        + &call_line("c2", 1_300, "main-new", 1, 2);
+    let reply = text_line(1_350, "the reply");
+    append(
+        &main,
+        &(opening.clone() + &reply + &thread_call_line("c3", 1_400, "sub-model", "t1")),
+    );
+    // A subagent's own file: its calls and text belong to the session, but
+    // only the session's own file counts messages.
+    append(
+        &subagent,
+        &(use_line("s1")
+            + &thread_call_line("c4", 1_500, "sub-model", "t2")
+            + &thread_call_line("c5", 1_600, "sub-model", "t2")
+            + &text_line(1_600, "the subagent's report")),
+    );
+    append(
+        &only_subagents,
+        &(session_line("s2", "/w", 900) + &thread_call_line("c6", 950, "sub-only", "t3")),
+    );
+    append(&quiet, &session_line("s3", "/w", 800));
+    fixture.sync(&[main.clone(), subagent, only_subagents, quiet]);
+
+    let listed = sessions(&fixture.store, every_session());
+    assert_eq!(session_ids(&listed), ["s1", "s2", "s3"]);
+    let busy = &listed[0];
+    assert_eq!(busy.path, path_text(&main));
+    assert_eq!(busy.message_count, 2);
+    let start = opening.len() as u64;
+    assert_eq!(
+        busy.last_message_range,
+        Some(ByteRange {
+            start,
+            end: start + reply.len() as u64
+        })
+    );
+    assert_eq!(busy.subagent_count, 2);
+    // The main thread's latest call names the model, though a subagent
+    // called later.
+    assert_eq!(busy.model.as_deref(), Some("main-new"));
+
+    assert_eq!(listed[1].model.as_deref(), Some("sub-only"));
+    assert_eq!(listed[1].subagent_count, 1);
+    assert_eq!(listed[1].message_count, 0);
+
+    let quiet = &listed[2];
+    assert_eq!(
+        (
+            quiet.message_count,
+            quiet.subagent_count,
+            quiet.model.as_deref(),
+            quiet.last_message_range
+        ),
+        (0, 0, None, None)
+    );
+    let serialized = serde_json::to_value(busy).expect("serialize the entry");
+    assert_eq!(serialized["messageCount"], 2);
+    assert_eq!(serialized["subagentCount"], 2);
+    assert_eq!(serialized["model"], "main-new");
+    assert_eq!(serialized["lastMessageRange"]["start"], start);
+    let serialized = serde_json::to_value(quiet).expect("serialize the entry");
+    assert!(serialized.get("model").is_none());
+    assert!(serialized.get("lastMessageRange").is_none());
+}
+
+#[test]
+fn sessions_filter_under_directories_and_order_by_start() {
+    let mut fixture = Fixture::new("under");
+    let files: Vec<PathBuf> = [
+        ("s1", Some("/w"), 1_000, 9_000),
+        ("s2", Some("/w/app"), 3_000, 3_000),
+        ("s3", Some("/wx"), 4_000, 4_000),
+        ("s4", Some(r"C:\w\y"), 5_000, 5_000),
+        ("s5", None, 6_000, 6_000),
+    ]
+    .iter()
+    .map(|(id, cwd, started, updated)| {
+        let path = fixture.file(&format!("{id}.jsonl"));
+        append(&path, &session_at(id, *cwd, *started, *updated));
+        path
+    })
+    .collect();
+    fixture.sync(&files);
+
+    let only = |filter: SessionFilter| session_ids(&sessions(&fixture.store, filter)).join(",");
+    let under = |directories: &[&str]| SessionFilter {
+        cwd_under: directories
+            .iter()
+            .map(|directory| directory.to_string())
+            .collect(),
+        ..every_session()
+    };
+    // A directory matches itself and what lies below it, not a sibling that
+    // shares its start; a trailing separator changes nothing.
+    assert_eq!(only(under(&["/w"])), "s1,s2");
+    assert_eq!(only(under(&["/w/"])), "s1,s2");
+    assert_eq!(only(under(&["/w/app", r"C:\w"])), "s4,s2");
+    assert_eq!(only(under(&[r"C:\"])), "s4");
+    // A root holds every path below it; sessions without a directory are
+    // under none.
+    assert_eq!(only(under(&["/"])), "s1,s3,s2");
+    assert_eq!(only(under(&["/elsewhere"])), "");
+    assert_eq!(only(every_session()), "s1,s5,s4,s3,s2");
+    assert_eq!(
+        only(SessionFilter {
+            order: SessionOrder::Started,
+            ..every_session()
+        }),
+        "s5,s4,s3,s2,s1"
+    );
+
+    let too_many = SessionFilter {
+        cwd_under: vec!["/w".to_string(); MAX_FILTER_DIRECTORIES + 1],
+        ..every_session()
+    };
+    let error = fixture
+        .store
+        .sessions(&too_many)
+        .expect_err("too many directories");
+    assert!(matches!(error.code, ErrorCode::InvalidRequest));
+}
+
+#[test]
+fn session_counts_ignore_the_page_and_group_by_directory() {
+    let mut fixture = Fixture::new("counts");
+    let files: Vec<PathBuf> = [
+        ("s1", Some("/w"), 1_000),
+        ("s2", Some("/w"), 2_000),
+        ("s3", Some("/w/app"), 3_000),
+        ("s4", None, 500),
+    ]
+    .iter()
+    .map(|(id, cwd, at)| {
+        let path = fixture.file(&format!("{id}.jsonl"));
+        append(&path, &session_at(id, *cwd, *at, *at));
+        path
+    })
+    .collect();
+    fixture.sync(&files);
+
+    let page = SessionFilter {
+        limit: 1,
+        ..every_session()
+    };
+    assert_eq!(sessions(&fixture.store, page.clone()).len(), 1);
+    let group = |cwd: Option<&str>, count, updated| SessionGroup {
+        cwd: cwd.map(str::to_string),
+        count,
+        updated_at_ms: Some(updated),
+    };
+    assert_eq!(
+        fixture.store.session_counts(&page).expect("count"),
+        SessionCounts {
+            total: 4,
+            groups: vec![
+                group(Some("/w/app"), 1, 3_000),
+                group(Some("/w"), 2, 2_000),
+                group(None, 1, 500),
+            ],
+            groups_truncated: false,
+        }
+    );
+    let counts = fixture
+        .store
+        .session_counts(&SessionFilter {
+            cwd: Some("/w".to_string()),
+            ..every_session()
+        })
+        .expect("count");
+    assert_eq!((counts.total, counts.groups.len()), (2, 1));
+    let serialized = serde_json::to_value(&counts).expect("serialize the counts");
+    assert_eq!(
+        serialized,
+        json!({ "total": 2, "groups": [{ "cwd": "/w", "count": 2, "updatedAtMs": 2_000 }],
+                "groupsTruncated": false })
+    );
 }

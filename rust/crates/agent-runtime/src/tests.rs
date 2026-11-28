@@ -1233,6 +1233,64 @@ fn write_session_file(harness: &Harness, now: i64) -> PathBuf {
 }
 
 #[test]
+fn records_list_filters_under_directories_counts_and_describes_activity() {
+    let harness = Harness::new("records-list", ALL_GRANTS);
+    let now = crate::now_ms();
+    write_session_file(&harness, now);
+    harness.run(
+        "agentSessions.sync",
+        json!({ "pluginID": PLUGIN, "agentID": AGENT }),
+    );
+
+    let answer = harness.run(
+        "agentSessions.list",
+        json!({ "cwdUnder": ["/work/"], "order": "started", "counts": true, "limit": 1 }),
+    );
+    assert_eq!(answer["total"], 1, "{answer}");
+    assert_eq!(answer["groupsTruncated"], false, "{answer}");
+    assert_eq!(
+        answer["groups"],
+        json!([{ "cwd": "/work/project", "count": 1, "updatedAtMs": now }])
+    );
+    let session = &answer["sessions"][0];
+    assert_eq!(session["messageCount"], 1, "{answer}");
+    assert_eq!(session["subagentCount"], 0, "{answer}");
+    assert_eq!(session["model"], "sample-model", "{answer}");
+    // The last message's range reads back the message itself.
+    let read = harness.run(
+        "agentSessions.read",
+        json!({ "agent": AGENT_KEY, "path": session["path"], "range": session["lastMessageRange"] }),
+    );
+    assert_eq!(read["messages"][0]["text"], "hello from the user", "{read}");
+
+    // Without `counts` the answer keeps its old shape; a directory that holds
+    // none of the sessions lists none and counts none.
+    let plain = harness.run("agentSessions.list", json!({}));
+    assert!(plain.get("total").is_none(), "{plain}");
+    let elsewhere = harness.run(
+        "agentSessions.list",
+        json!({ "cwdUnder": ["/work/project-two"], "counts": true }),
+    );
+    assert_eq!(
+        (elsewhere["sessions"].clone(), elsewhere["total"].clone()),
+        (json!([]), json!(0))
+    );
+
+    for payload in [
+        json!({ "cwdUnder": [""] }),
+        json!({ "cwdUnder": ["/work\nproject"] }),
+        json!({ "cwdUnder": ["/w".repeat(2_049)] }),
+        json!({ "cwdUnder": vec!["/work"; 65] }),
+        json!({ "order": "title" }),
+    ] {
+        assert_eq!(
+            harness.refused("agentSessions.list", payload),
+            "agents.invalidPayload"
+        );
+    }
+}
+
+#[test]
 fn records_sync_list_search_read_and_sum_through_the_plugin() {
     let harness = Harness::new("records", ALL_GRANTS);
     let now = crate::now_ms();
