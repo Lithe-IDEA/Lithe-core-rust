@@ -743,6 +743,10 @@ pub enum EditorCommand {
     RenderHoverDoc,
     /// Resolves persisted editor presentation preferences (`editor.preferences.resolve`).
     PreferencesResolve,
+    /// Validates and normalizes global and project file type mappings (`editor.fileTypeMappings.normalize`).
+    FileTypeMappingsNormalize,
+    /// Resolves the mapped language identifier for one file path (`editor.fileTypeMappings.resolve`).
+    FileTypeMappingsResolve,
     /// Assigns nesting depths to structural bracket tokens (`editor.rainbowBrackets`).
     RainbowBrackets,
     /// Assigns stable, spelling-based colors to variable tokens (`editor.rainbowVariables`).
@@ -1656,6 +1660,12 @@ impl CoreCommand {
             "editor.renderDocComment" => Some(Self::Editor(EditorCommand::RenderDocComment)),
             "editor.renderHoverDoc" => Some(Self::Editor(EditorCommand::RenderHoverDoc)),
             "editor.preferences.resolve" => Some(Self::Editor(EditorCommand::PreferencesResolve)),
+            "editor.fileTypeMappings.normalize" => {
+                Some(Self::Editor(EditorCommand::FileTypeMappingsNormalize))
+            }
+            "editor.fileTypeMappings.resolve" => {
+                Some(Self::Editor(EditorCommand::FileTypeMappingsResolve))
+            }
             "editor.rainbowBrackets" => Some(Self::Editor(EditorCommand::RainbowBrackets)),
             "editor.rainbowVariables" => Some(Self::Editor(EditorCommand::RainbowVariables)),
             "editor.recent.reduce" => Some(Self::Editor(EditorCommand::RecentReduce)),
