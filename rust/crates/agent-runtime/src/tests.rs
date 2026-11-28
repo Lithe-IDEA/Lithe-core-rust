@@ -1276,8 +1276,58 @@ fn records_sync_list_search_read_and_sum_through_the_plugin() {
     );
     assert_eq!(
         read,
-        json!({ "changed": false, "messages": [{ "role": "user", "text": "hello from the user" }] })
+        json!({
+            "changed": false,
+            "messages": [{ "role": "user", "text": "hello from the user" }],
+            "end": hits[0]["range"]["end"],
+        })
     );
+
+    // The list gives how much of the file the cache has read and finds one
+    // session by its ID, so a viewer can page through a whole record.
+    let size = fs::metadata(&file).unwrap().len();
+    assert_eq!(sessions[0]["readBytes"], size, "{sessions}");
+    let found = harness.run("agentSessions.list", json!({ "sessionID": "s1" }))["sessions"].clone();
+    assert_eq!(found.as_array().map(Vec::len), Some(1), "{found}");
+    let none = harness.run("agentSessions.list", json!({ "sessionID": "s9" }))["sessions"].clone();
+    assert_eq!(none.as_array().map(Vec::len), Some(0), "{none}");
+    let whole = harness.run(
+        "agentSessions.read",
+        json!({ "agent": AGENT_KEY, "path": path_text(&file), "range": { "start": 0, "end": size } }),
+    );
+    assert_eq!(whole["end"], size, "{whole}");
+    assert_eq!(
+        whole["messages"].as_array().map(Vec::len),
+        Some(1),
+        "{whole}"
+    );
+    // A page that ends inside a line stops at the line before it, and the
+    // plugin never sees the cut line.
+    let text = fs::read_to_string(&file).unwrap();
+    let second = text.find('\n').unwrap() as u64 + 1;
+    let third = second + text[second as usize..].find('\n').unwrap() as u64 + 1;
+    let page = harness.run(
+        "agentSessions.read",
+        json!({ "agent": AGENT_KEY, "path": path_text(&file), "range": { "start": 0, "end": third + 5 } }),
+    );
+    assert_eq!(page["end"], third, "{page}");
+    assert_eq!(page["messages"].as_array().map(Vec::len), Some(1), "{page}");
+    let last = harness
+        .link
+        .calls_of("sessions.read")
+        .last()
+        .cloned()
+        .unwrap();
+    let sent = last["items"][0]["lines"].as_array().map(Vec::len);
+    assert_eq!(sent, Some(2), "{last}");
+    let calls = harness.link.calls_of("sessions.read").len();
+    let inside = harness.run(
+        "agentSessions.read",
+        json!({ "agent": AGENT_KEY, "path": path_text(&file), "range": { "start": second + 1, "end": second + 5 } }),
+    );
+    let expected = json!({ "changed": false, "messages": [], "end": second + 1 });
+    assert_eq!(inside, expected);
+    assert_eq!(harness.link.calls_of("sessions.read").len(), calls);
     assert_eq!(
         harness.refused(
             "agentSessions.read",

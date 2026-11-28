@@ -352,6 +352,8 @@ impl Records {
             cwd: Option<String>,
             #[serde(default)]
             active_since_ms: Option<i64>,
+            #[serde(rename = "sessionID", default)]
+            session_id: Option<String>,
             #[serde(default)]
             offset: u64,
             #[serde(default)]
@@ -367,6 +369,7 @@ impl Records {
             agents,
             cwd: request.cwd,
             active_since_ms: request.active_since_ms,
+            session_id: request.session_id,
             offset: request.offset,
             limit: request.limit.unwrap_or(100).clamp(1, MAX_SESSIONS_PAGE),
         };
@@ -495,7 +498,9 @@ impl Records {
     }
 
     /// `agentSessions.read`: the messages of a byte range of a session file,
-    /// as the agent's plugin reads them.
+    /// as the agent's plugin reads them. A range that ends inside a line is
+    /// read up to its last whole line, and `end` says where that is, so a host
+    /// reads a long session a page at a time and no line is cut in two.
     pub fn read(&self, runtime: &Runtime, payload: Value) -> Result<Value, CoreError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -522,14 +527,40 @@ impl Records {
                 "The file is not in a session directory of the agent.",
             )
         })?;
-        let bytes = {
+        let (bytes, ends_line) = {
             let reader = self.lock_reader();
             let store = reader.as_ref().ok_or_else(not_configured)?;
-            store.read_range(&request.agent, &request.path, request.range)?
+            let bytes = store.read_range(&request.agent, &request.path, request.range)?;
+            // A range ends a line when its last byte is a newline or the byte
+            // after it begins one; a span a plugin recorded without its
+            // newline is read whole.
+            let ends_line = match &bytes {
+                Some(bytes) if bytes.last() != Some(&b'\n') => {
+                    let next = ByteRange {
+                        start: request.range.end,
+                        end: request.range.end.saturating_add(1),
+                    };
+                    !matches!(
+                        store.read_range(&request.agent, &request.path, next),
+                        Ok(Some(byte)) if byte != b"\n" && byte != b"\r"
+                    )
+                }
+                _ => true,
+            };
+            (bytes, ends_line)
         };
-        let Some(bytes) = bytes else {
+        let Some(mut bytes) = bytes else {
             return Ok(json!({ "changed": true, "messages": [] }));
         };
+        if !ends_line {
+            bytes.truncate(whole_lines(&bytes));
+        }
+        // A range inside one line reads nothing and answers its own start, so
+        // the caller asks again with a larger range.
+        let end = request.range.start + bytes.len() as u64;
+        if bytes.is_empty() {
+            return Ok(json!({ "changed": false, "messages": [], "end": end }));
+        }
         let items = vec![json!({ "path": request.path, "lines": text_lines(&bytes) })];
         let answers = call_read(
             &*runtime.link,
@@ -544,7 +575,7 @@ impl Records {
             .map(decode_messages)
             .transpose()?
             .unwrap_or_default();
-        Ok(json!({ "changed": false, "messages": messages }))
+        Ok(json!({ "changed": false, "messages": messages, "end": end }))
     }
 
     /// `agentSessions.stats`: usage of the readable agents for the host.
@@ -909,6 +940,15 @@ fn backend_for(
                 "The agent plugin's backend is not running.",
             )
         })
+}
+
+/// How many of `bytes`, which end inside a line, make whole lines: up to the
+/// last newline, none when they hold no newline.
+fn whole_lines(bytes: &[u8]) -> usize {
+    bytes
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(0, |index| index + 1)
 }
 
 /// The lines of `bytes` as text, without their line breaks.

@@ -513,8 +513,20 @@ fn sessions_merge_their_files_and_filter() {
         (Some(1_000), Some(1_000))
     );
     assert!(merged.title_range.is_some());
+    // The cache has read every whole line of the file the entry names.
+    assert_eq!(
+        merged.read_bytes,
+        std::fs::metadata(&described).expect("stat the file").len()
+    );
 
     let only = |filter: SessionFilter| session_ids(&sessions(&fixture.store, filter)).join(",");
+    assert_eq!(
+        only(SessionFilter {
+            session_id: Some("s3".to_string()),
+            ..every_session()
+        }),
+        "s3"
+    );
     assert_eq!(
         only(SessionFilter {
             agents: vec![AGENT.to_string()],

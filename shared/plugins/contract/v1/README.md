@@ -3944,13 +3944,27 @@ Lithe list, search and sum them without the CLI running:
   `unreadableEntries`. Lines reach `scan` in chunks of at most 4 MiB; a line
   longer than 16 MiB is skipped. `agentSessions.forget {pluginID, agentID}`
   drops the agent's records and answers `{files}`.
-- `agentSessions.list {agents?, cwd?, activeSinceMs?, offset, limit,
-  titles}` (at most 500), `agentSessions.search {text, agents?, sessionID?,
-  limit}` (at most 200), `agentSessions.read {agent, path, range}` and
-  `agentSessions.stats {agents?, sessionID?, sinceMs?, untilMs?, groupBy,
-  utcOffsetSeconds}` serve the host's own views; `agent` is
+- `agentSessions.list {agents?, cwd?, sessionID?, activeSinceMs?, offset,
+  limit, titles}` (at most 500), `agentSessions.search {text, agents?,
+  sessionID?, limit}` (at most 200), `agentSessions.read {agent, path,
+  range}` and `agentSessions.stats {agents?, sessionID?, sinceMs?, untilMs?,
+  groupBy, utcOffsetSeconds}` serve the host's own views; `agent` is
   `<pluginID>/<agentID>`, and `stats` groups by `day`, `agent`, `model`,
   `session` or `cwd`.
+- A listed session gives `readBytes`, how many bytes of `path` the cache has
+  read; a read range ends at most there and spans at most 16 MiB. `read`
+  answers `{changed, messages, end}`. `end` is where the next page starts: the
+  range end when the range ends a line, otherwise the start of the line the
+  range cuts, whose bytes the backend never sees. A range inside one line
+  answers `end` equal to its start and no messages; ask again with a larger
+  range. `changed` is true, with no messages and no `end`, when the file
+  changed since the cache read it; sync and list again. A backend's whole
+  `messages` answer must fit the 1 MiB function result bound, so a host pages
+  a long record with ranges well below it.
+- `sessionID`, `readBytes` and `end` were added within `agents` 0. A Core
+  that predates them refuses `sessionID` as an unknown field, answers neither
+  `readBytes` nor `end`, and may hand `read` a range that ends inside a line;
+  the backend skips a line that is not a whole JSON value.
 
 `scan` receives `{agentID, sourceID, path, lines: [{offset, length, text}],
 state?}` and has 30 seconds. It answers:
