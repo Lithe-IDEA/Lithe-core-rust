@@ -1034,6 +1034,10 @@ marked folder, empty when nothing is marked. A marked or anchored root, more tha
 2^20 rows or marks, and unknown fields or actions return `invalid_request`. See
 `rust/fixtures/workspace/row-selection-v1.json`.
 
+For `workspace.listDirectories`, `rust/fixtures/workspace/directory-listing-leaves-v1.json`
+shows the difference between an unloaded child in its parent's listing and the empty
+`children` array returned when that same directory is listed directly.
+
 `workspace.projectTree.rows` accepts `{ nodes, selection?, top? }` and returns
 `{ rows, selection, selectionMoved, topRow, targets }`. `nodes` are the project tree
 nodes the host loaded with `workspace.listDirectories`, in preorder, each
