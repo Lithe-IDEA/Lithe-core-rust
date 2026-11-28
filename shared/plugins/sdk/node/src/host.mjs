@@ -325,7 +325,7 @@ export function createHost(channel, callSignal, parentOperationId) {
       report: async (session, events, options) => {
         await request(HOST_METHODS.agentsReport, { session, events }, options);
       },
-      /** `{ sinceMs, untilMs, summaries, rateLimits }` for `{ groupBy, sinceMs?, untilMs?, utcOffsetSeconds? }`. */
+      /** `{ sinceMs, untilMs, summaries, speeds, rateLimits }` for `{ groupBy, sinceMs?, untilMs?, utcOffsetSeconds? }`. */
       usage: async (params, options) => {
         const result = await request(HOST_METHODS.agentsUsage, params, options);
         if (typeof result !== 'object' || result === null || Array.isArray(result)) {

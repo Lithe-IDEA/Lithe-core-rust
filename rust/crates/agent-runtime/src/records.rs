@@ -19,10 +19,11 @@ use crate::catalog::{record_key, split_record_key, CatalogAgent};
 use crate::events::{check_rate_limits, RateLimits, RateWindow, MAX_RATE_WINDOWS};
 use crate::{log, now_ms, Runtime};
 use lithe_agent_sessions::pricing::PriceTable;
-use lithe_agent_sessions::stats::{GroupBy, Summarizer};
+use lithe_agent_sessions::stats::{GroupBy, SpeedRanker, Summarizer};
 use lithe_agent_sessions::{
     discover, ByteRange, CallFilter, ScanChunk, ScanOutput, SearchQuery, SessionFilter,
-    SessionParser, SessionSource, SessionStore, MAX_SEARCH_HITS, MAX_SESSIONS_PAGE,
+    SessionOrder, SessionParser, SessionSource, SessionStore, MAX_FILTER_DIRECTORIES,
+    MAX_SEARCH_HITS, MAX_SESSIONS_PAGE,
 };
 use lithe_lsp_engine::agent_host::AgentHostFailure;
 use lithe_plugin_agents::SessionSourceDeclaration;
@@ -53,6 +54,9 @@ const MAX_MESSAGE_TEXT_BYTES: usize = 1024 * 1024;
 
 /// Longest range `lithe/host/agents/usage` sums, in days.
 const MAX_USAGE_DAYS: i64 = 366;
+
+/// Longest directory `agentSessions.list`'s `cwdUnder` takes, in bytes.
+const MAX_FILTER_DIRECTORY_BYTES: usize = 4096;
 
 /// Largest `rate-limits.json` Core loads.
 const MAX_RATE_FILE_BYTES: u64 = 1024 * 1024;
@@ -340,9 +344,17 @@ impl Records {
         Ok(json!({ "files": files }))
     }
 
-    /// `agentSessions.list`: the sessions of the readable agents, newest
-    /// first, with their titles when asked.
+    /// `agentSessions.list`: a page of the readable agents' sessions, most
+    /// recently active or started first, with their titles and the counts of
+    /// the whole list when asked.
     pub fn list(&self, runtime: &Runtime, payload: Value) -> Result<Value, CoreError> {
+        #[derive(Deserialize, Default, PartialEq, Eq)]
+        #[serde(rename_all = "camelCase")]
+        enum ListOrder {
+            #[default]
+            Updated,
+            Started,
+        }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase", deny_unknown_fields)]
         struct ListRequest {
@@ -351,29 +363,67 @@ impl Records {
             #[serde(default)]
             cwd: Option<String>,
             #[serde(default)]
+            cwd_under: Vec<String>,
+            #[serde(default)]
             active_since_ms: Option<i64>,
+            #[serde(rename = "sessionID", default)]
+            session_id: Option<String>,
+            #[serde(default)]
+            order: ListOrder,
             #[serde(default)]
             offset: u64,
             #[serde(default)]
             limit: Option<usize>,
             #[serde(default)]
             titles: bool,
+            #[serde(default)]
+            counts: bool,
         }
         let request: ListRequest = crate::decode(payload)?;
+        if request.cwd_under.len() > MAX_FILTER_DIRECTORIES
+            || request.cwd_under.iter().any(|directory| {
+                directory.is_empty()
+                    || directory.len() > MAX_FILTER_DIRECTORY_BYTES
+                    || directory.chars().any(char::is_control)
+            })
+        {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Invalid agent command payload: cwdUnder",
+            )
+            .with_details("agents.invalidPayload"));
+        }
         let Some(agents) = allowed_agents(runtime, request.agents) else {
-            return Ok(json!({ "sessions": [] }));
+            let mut answer = json!({ "sessions": [] });
+            if request.counts {
+                answer["total"] = json!(0);
+                answer["groups"] = json!([]);
+                answer["groupsTruncated"] = json!(false);
+            }
+            return Ok(answer);
         };
         let filter = SessionFilter {
             agents,
             cwd: request.cwd,
+            cwd_under: request.cwd_under,
             active_since_ms: request.active_since_ms,
+            session_id: request.session_id,
+            order: match request.order {
+                ListOrder::Updated => SessionOrder::Updated,
+                ListOrder::Started => SessionOrder::Started,
+            },
             offset: request.offset,
             limit: request.limit.unwrap_or(100).clamp(1, MAX_SESSIONS_PAGE),
         };
-        let (entries, title_bytes) = {
+        let (entries, title_bytes, counts) = {
             let reader = self.lock_reader();
             let store = reader.as_ref().ok_or_else(not_configured)?;
             let entries = store.sessions(&filter)?;
+            let counts = if request.counts {
+                Some(store.session_counts(&filter)?)
+            } else {
+                None
+            };
             let mut title_bytes = Vec::with_capacity(entries.len());
             for entry in &entries {
                 let bytes = match (request.titles, entry.title_range) {
@@ -385,7 +435,7 @@ impl Records {
                 };
                 title_bytes.push(bytes);
             }
-            (entries, title_bytes)
+            (entries, title_bytes, counts)
         };
 
         let mut titles: Vec<Option<String>> = vec![None; entries.len()];
@@ -452,7 +502,13 @@ impl Records {
                 value
             })
             .collect();
-        Ok(json!({ "sessions": sessions }))
+        let mut answer = json!({ "sessions": sessions });
+        if let Some(counts) = counts {
+            answer["total"] = json!(counts.total);
+            answer["groups"] = serde_json::to_value(&counts.groups).unwrap_or_else(|_| json!([]));
+            answer["groupsTruncated"] = json!(counts.groups_truncated);
+        }
+        Ok(answer)
     }
 
     /// `agentSessions.search`: where the readable agents' sessions contain
@@ -495,7 +551,9 @@ impl Records {
     }
 
     /// `agentSessions.read`: the messages of a byte range of a session file,
-    /// as the agent's plugin reads them.
+    /// as the agent's plugin reads them. A range that ends inside a line is
+    /// read up to its last whole line, and `end` says where that is, so a host
+    /// reads a long session a page at a time and no line is cut in two.
     pub fn read(&self, runtime: &Runtime, payload: Value) -> Result<Value, CoreError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -522,14 +580,40 @@ impl Records {
                 "The file is not in a session directory of the agent.",
             )
         })?;
-        let bytes = {
+        let (bytes, ends_line) = {
             let reader = self.lock_reader();
             let store = reader.as_ref().ok_or_else(not_configured)?;
-            store.read_range(&request.agent, &request.path, request.range)?
+            let bytes = store.read_range(&request.agent, &request.path, request.range)?;
+            // A range ends a line when its last byte is a newline or the byte
+            // after it begins one; a span a plugin recorded without its
+            // newline is read whole.
+            let ends_line = match &bytes {
+                Some(bytes) if bytes.last() != Some(&b'\n') => {
+                    let next = ByteRange {
+                        start: request.range.end,
+                        end: request.range.end.saturating_add(1),
+                    };
+                    !matches!(
+                        store.read_range(&request.agent, &request.path, next),
+                        Ok(Some(byte)) if byte != b"\n" && byte != b"\r"
+                    )
+                }
+                _ => true,
+            };
+            (bytes, ends_line)
         };
-        let Some(bytes) = bytes else {
+        let Some(mut bytes) = bytes else {
             return Ok(json!({ "changed": true, "messages": [] }));
         };
+        if !ends_line {
+            bytes.truncate(whole_lines(&bytes));
+        }
+        // A range inside one line reads nothing and answers its own start, so
+        // the caller asks again with a larger range.
+        let end = request.range.start + bytes.len() as u64;
+        if bytes.is_empty() {
+            return Ok(json!({ "changed": false, "messages": [], "end": end }));
+        }
         let items = vec![json!({ "path": request.path, "lines": text_lines(&bytes) })];
         let answers = call_read(
             &*runtime.link,
@@ -544,7 +628,7 @@ impl Records {
             .map(decode_messages)
             .transpose()?
             .unwrap_or_default();
-        Ok(json!({ "changed": false, "messages": messages }))
+        Ok(json!({ "changed": false, "messages": messages, "end": end }))
     }
 
     /// `agentSessions.stats`: usage of the readable agents for the host.
@@ -573,8 +657,8 @@ impl Records {
                     "Group by day, agent, model, session or cwd.",
                 )
             })?;
-        let summaries = match allowed_agents(runtime, request.agents) {
-            None => json!([]),
+        let (summaries, speeds) = match allowed_agents(runtime, request.agents) {
+            None => (json!([]), json!([])),
             Some(agents) => {
                 let filter = CallFilter {
                     agents,
@@ -589,28 +673,37 @@ impl Records {
         };
         Ok(json!({
             "summaries": summaries,
+            "speeds": speeds,
             "rateLimits": self.rate_limit_entries(runtime),
         }))
     }
 
+    /// The summaries of the calls `filter` selects, grouped by `group_by`,
+    /// and the models ranked by median output speed over the same calls.
     fn summarize(
         &self,
         store: &SessionStore,
         filter: &CallFilter,
         group_by: GroupBy,
-    ) -> Result<Value, CoreError> {
+    ) -> Result<(Value, Value), CoreError> {
         let prices = self.prices.read().unwrap_or_else(PoisonError::into_inner);
         let mut summarizer = Summarizer::new(group_by, prices.as_ref());
+        let mut speeds = SpeedRanker::default();
         store.for_each_call(filter, |entry| {
             summarizer.add(&entry);
+            speeds.add(&entry.call);
             Ok(())
         })?;
-        Ok(serde_json::to_value(summarizer.finish()).unwrap_or_else(|_| json!([])))
+        Ok((
+            serde_json::to_value(summarizer.finish()).unwrap_or_else(|_| json!([])),
+            serde_json::to_value(speeds.finish()).unwrap_or_else(|_| json!([])),
+        ))
     }
 
     /// Answers `lithe/host/agents/usage` for a plugin granted
     /// `agents.usage.read`: totals of the readable agents, grouped by day,
-    /// agent or model, and their rate limits. It carries no conversation text,
+    /// agent or model, the models' median output speeds, and the agents'
+    /// rate limits. It carries no conversation text,
     /// titles, session IDs or directories. Runs with the asking backend's
     /// session lock held, so it never waits for the cache.
     pub fn usage(&self, runtime: &Runtime, params: &Value) -> Result<Value, AgentHostFailure> {
@@ -645,8 +738,8 @@ impl Records {
             .iter()
             .map(CatalogAgent::record_key)
             .collect();
-        let summaries = if agents.is_empty() {
-            json!([])
+        let (summaries, speeds) = if agents.is_empty() {
+            (json!([]), json!([]))
         } else {
             let reader = match self.reader.try_lock() {
                 Ok(reader) => reader,
@@ -678,6 +771,7 @@ impl Records {
             "sinceMs": since_ms,
             "untilMs": until_ms,
             "summaries": summaries,
+            "speeds": speeds,
             "rateLimits": self.rate_limit_entries(runtime),
         }))
     }
@@ -899,6 +993,15 @@ fn backend_for(
                 "The agent plugin's backend is not running.",
             )
         })
+}
+
+/// How many of `bytes`, which end inside a line, make whole lines: up to the
+/// last newline, none when they hold no newline.
+fn whole_lines(bytes: &[u8]) -> usize {
+    bytes
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(0, |index| index + 1)
 }
 
 /// The lines of `bytes` as text, without their line breaks.

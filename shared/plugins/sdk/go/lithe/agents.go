@@ -131,7 +131,7 @@ func (a *Agents) Report(session string, events any) error {
 	return err
 }
 
-// Usage answers { sinceMs, untilMs, summaries, rateLimits } for
+// Usage answers { sinceMs, untilMs, summaries, speeds, rateLimits } for
 // { groupBy, sinceMs?, untilMs?, utcOffsetSeconds? }.
 func (a *Agents) Usage(params any) (json.RawMessage, error) {
 	value, err := toValue(params)

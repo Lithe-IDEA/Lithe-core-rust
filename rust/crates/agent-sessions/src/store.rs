@@ -57,6 +57,12 @@ pub const MAX_SEARCH_HITS: usize = 200;
 /// Most sessions one page of [`SessionStore::sessions`] lists.
 pub const MAX_SESSIONS_PAGE: usize = 500;
 
+/// Most directories one [`SessionFilter::cwd_under`] names.
+pub const MAX_FILTER_DIRECTORIES: usize = 64;
+
+/// Most working directories [`SessionStore::session_counts`] counts apart.
+pub const MAX_SESSION_GROUPS: usize = 500;
+
 /// Most bytes [`SessionStore::read_range`] returns at once.
 pub const MAX_READ_BYTES: u64 = 16 * 1024 * 1024;
 
@@ -237,12 +243,60 @@ pub struct SessionFilter {
     pub agents: Vec<String>,
     /// Only sessions that ran in this working directory.
     pub cwd: Option<String>,
+    /// Only sessions that ran in one of these directories or below one; empty
+    /// does not filter. A directory matches its own path and the paths that
+    /// continue it after a `/` or `\`; trailing separators are ignored. At
+    /// most [`MAX_FILTER_DIRECTORIES`].
+    pub cwd_under: Vec<String>,
     /// Only sessions last active at or after this time, in Unix milliseconds.
     pub active_since_ms: Option<i64>,
+    /// Only the session with this ID, in the agent's own ID format.
+    pub session_id: Option<String>,
+    /// Which sessions come first.
+    pub order: SessionOrder,
     /// Sessions to skip, for the next page.
     pub offset: u64,
     /// Sessions to list, at most [`MAX_SESSIONS_PAGE`].
     pub limit: usize,
+}
+
+/// The order of [`SessionStore::sessions`]. Sessions without the time come
+/// last; ties go by agent and session ID.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SessionOrder {
+    /// Most recently active first: by the latest change, or the start when no
+    /// file records a change.
+    #[default]
+    Updated,
+    /// Most recently started first.
+    Started,
+}
+
+/// How many sessions a [`SessionFilter`] selects, ignoring its page.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCounts {
+    /// Every session the filter selects.
+    pub total: u64,
+    /// The sessions of each working directory, most recently active first, at
+    /// most [`MAX_SESSION_GROUPS`].
+    pub groups: Vec<SessionGroup>,
+    /// Whether directories were left out of `groups`.
+    pub groups_truncated: bool,
+}
+
+/// The sessions of one working directory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionGroup {
+    /// The directory; absent for sessions whose directory is not known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    /// Sessions that ran in it.
+    pub count: u64,
+    /// The latest activity of those sessions, in Unix milliseconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at_ms: Option<i64>,
 }
 
 /// A session, merged from every file that describes it.
@@ -278,6 +332,59 @@ pub struct SessionEntry {
     /// The bytes of `path` that hold the title.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title_range: Option<ByteRange>,
+    /// How many bytes of `path` the cache has read: every whole line up to
+    /// here, so [`SessionStore::read_range`] takes any range that ends by it.
+    pub read_bytes: u64,
+    /// The session's messages in `path`: the prompts and replies its plugin
+    /// reported as searchable text. Tool output and other files' copies are
+    /// not counted.
+    pub message_count: u64,
+    /// Threads besides the main one that made model calls in the session, in
+    /// any of its files: the agent's subagents.
+    pub subagent_count: u64,
+    /// The model of the session's latest call: the main thread's when it made
+    /// one, otherwise a subagent's; the requested model when the response
+    /// named none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// The bytes of `path` that hold the session's last message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_message_range: Option<ByteRange>,
+}
+
+/// The sessions a [`SessionFilter`] selects, before its order and page, one
+/// row per session: the copy the other fields come from. Parameters: `?1`
+/// agents, `?2` cwd, `?3` active since, `?4` session ID, `?5` the
+/// directories of `cwd_under`.
+macro_rules! selected_sessions {
+    () => {
+        "WITH ranked AS (
+            SELECT f.agent, f.path, f.cursor_offset, s.*,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY f.agent, s.session_id
+                       ORDER BY s.described DESC, f.path
+                   ) AS copy_rank,
+                   COUNT(*) OVER whole AS file_count,
+                   MIN(s.started_at_ms) OVER whole AS first_started_ms,
+                   MAX(s.updated_at_ms) OVER whole AS last_updated_ms
+            FROM sessions s JOIN files f ON f.id = s.file_id
+            WHERE (json_array_length(?1) = 0
+                   OR f.agent IN (SELECT value FROM json_each(?1)))
+              AND (?4 IS NULL OR s.session_id = ?4)
+            WINDOW whole AS (PARTITION BY f.agent, s.session_id)
+        ),
+        selected AS (
+            SELECT * FROM ranked
+            WHERE copy_rank = 1
+              AND (?2 IS NULL OR cwd = ?2)
+              AND (?3 IS NULL OR COALESCE(last_updated_ms, first_started_ms) >= ?3)
+              AND (json_array_length(?5) = 0
+                   OR EXISTS (SELECT 1 FROM json_each(?5) d
+                              WHERE cwd = d.value
+                                 OR substr(cwd, 1, length(d.value) + 1)
+                                    IN (d.value || '/', d.value || char(92))))
+        )"
+    };
 }
 
 /// A full-text search.
@@ -499,64 +606,176 @@ impl SessionStore {
         Ok(visited)
     }
 
-    /// Lists sessions, most recently active first.
+    /// Lists a page of sessions in the filter's order.
     pub fn sessions(&self, filter: &SessionFilter) -> Result<Vec<SessionEntry>, CoreError> {
-        const SQL: &str = "
-            WITH ranked AS (
-                SELECT f.agent, f.path, s.*,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY f.agent, s.session_id
-                           ORDER BY s.described DESC, f.path
-                       ) AS copy_rank,
-                       COUNT(*) OVER whole AS file_count,
-                       MIN(s.started_at_ms) OVER whole AS first_started_ms,
-                       MAX(s.updated_at_ms) OVER whole AS last_updated_ms
-                FROM sessions s JOIN files f ON f.id = s.file_id
-                WHERE json_array_length(?1) = 0
-                   OR f.agent IN (SELECT value FROM json_each(?1))
-                WINDOW whole AS (PARTITION BY f.agent, s.session_id)
-            )
+        const SQL: &str = concat!(
+            selected_sessions!(),
+            "
             SELECT agent, session_id, path, file_count, parent_session_id, cwd,
-                   first_started_ms, last_updated_ms, agent_version, title_start, title_end
-            FROM ranked
-            WHERE copy_rank = 1
-              AND (?2 IS NULL OR cwd = ?2)
-              AND (?3 IS NULL OR COALESCE(last_updated_ms, first_started_ms) >= ?3)
-            ORDER BY COALESCE(last_updated_ms, first_started_ms) DESC NULLS LAST,
+                   first_started_ms, last_updated_ms, agent_version, title_start, title_end,
+                   cursor_offset, file_id
+            FROM selected
+            ORDER BY CASE WHEN ?6 = 1 THEN first_started_ms
+                          ELSE COALESCE(last_updated_ms, first_started_ms) END DESC NULLS LAST,
                      agent, session_id
-            LIMIT ?4 OFFSET ?5";
+            LIMIT ?7 OFFSET ?8"
+        );
+        let list = |error| sql_error("Could not list agent sessions", error);
         let limit = filter.limit.min(MAX_SESSIONS_PAGE);
-        let mut statement = self
+        let mut entries = {
+            let mut statement = self.connection.prepare_cached(SQL).map_err(list)?;
+            let rows = statement
+                .query_map(
+                    params![
+                        agents_json(&filter.agents)?,
+                        filter.cwd,
+                        filter.active_since_ms,
+                        filter.session_id,
+                        directories_json(&filter.cwd_under)?,
+                        i64::from(filter.order == SessionOrder::Started),
+                        limit,
+                        filter.offset
+                    ],
+                    |row| {
+                        let entry = SessionEntry {
+                            agent: row.get(0)?,
+                            session_id: row.get(1)?,
+                            path: row.get(2)?,
+                            file_count: row.get(3)?,
+                            parent_session_id: row.get(4)?,
+                            cwd: row.get(5)?,
+                            started_at_ms: row.get(6)?,
+                            updated_at_ms: row.get(7)?,
+                            agent_version: row.get(8)?,
+                            title_range: optional_range(row.get(9)?, row.get(10)?),
+                            read_bytes: row.get(11)?,
+                            message_count: 0,
+                            subagent_count: 0,
+                            model: None,
+                            last_message_range: None,
+                        };
+                        Ok((row.get::<_, i64>(12)?, entry))
+                    },
+                )
+                .map_err(list)?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(list)?
+        };
+        for (file_id, entry) in &mut entries {
+            cancellation::check()?;
+            self.describe_activity(*file_id, entry).map_err(list)?;
+        }
+        Ok(entries.into_iter().map(|(_, entry)| entry).collect())
+    }
+
+    /// Fills in the messages, subagents and model of a listed session.
+    fn describe_activity(&self, file_id: i64, entry: &mut SessionEntry) -> rusqlite::Result<()> {
+        // The count is taken over every span before the limit keeps the last.
+        const MESSAGES: &str = "
+            SELECT range_start, range_end, COUNT(*) OVER ()
+            FROM spans WHERE file_id = ?1 AND session_id = ?2
+            ORDER BY range_start DESC LIMIT 1";
+        // Every file that records calls of the session has a row in sessions.
+        const THREADS: &str = "
+            SELECT COUNT(DISTINCT c.thread_id)
+            FROM sessions s
+            JOIN files f ON f.id = s.file_id
+            JOIN calls c ON c.file_id = s.file_id AND c.session_id = s.session_id
+            WHERE s.session_id = ?1 AND f.agent = ?2";
+        const MODEL: &str = "
+            SELECT COALESCE(c.model, c.requested_model)
+            FROM sessions s
+            JOIN files f ON f.id = s.file_id
+            JOIN calls c ON c.file_id = s.file_id AND c.session_id = s.session_id
+            WHERE s.session_id = ?1 AND f.agent = ?2
+              AND COALESCE(c.model, c.requested_model) IS NOT NULL
+            ORDER BY c.thread_id IS NOT NULL, c.started_at_ms DESC, c.call_key DESC
+            LIMIT 1";
+        let last = self
             .connection
-            .prepare_cached(SQL)
-            .map_err(|error| sql_error("Could not list agent sessions", error))?;
+            .prepare_cached(MESSAGES)?
+            .query_row(params![file_id, entry.session_id], |row| {
+                Ok((
+                    row.get::<_, u64>(0)?,
+                    row.get::<_, u64>(1)?,
+                    row.get::<_, u64>(2)?,
+                ))
+            })
+            .optional()?;
+        if let Some((start, end, count)) = last {
+            entry.message_count = count;
+            entry.last_message_range = Some(ByteRange { start, end });
+        }
+        entry.subagent_count = self
+            .connection
+            .prepare_cached(THREADS)?
+            .query_row(params![entry.session_id, entry.agent], |row| row.get(0))?;
+        entry.model = self
+            .connection
+            .prepare_cached(MODEL)?
+            .query_row(params![entry.session_id, entry.agent], |row| row.get(0))
+            .optional()?;
+        Ok(())
+    }
+
+    /// Counts the sessions `filter` selects, in all and by working directory,
+    /// ignoring its order and page.
+    pub fn session_counts(&self, filter: &SessionFilter) -> Result<SessionCounts, CoreError> {
+        const TOTAL: &str = concat!(selected_sessions!(), " SELECT COUNT(*) FROM selected");
+        const GROUPS: &str = concat!(
+            selected_sessions!(),
+            "
+            SELECT cwd, COUNT(*), MAX(COALESCE(last_updated_ms, first_started_ms)) AS active
+            FROM selected
+            GROUP BY cwd
+            ORDER BY active DESC NULLS LAST, cwd
+            LIMIT ?6"
+        );
+        let count = |error| sql_error("Could not count agent sessions", error);
+        let agents = agents_json(&filter.agents)?;
+        let directories = directories_json(&filter.cwd_under)?;
+        let total = self
+            .connection
+            .prepare_cached(TOTAL)
+            .map_err(count)?
+            .query_row(
+                params![
+                    agents,
+                    filter.cwd,
+                    filter.active_since_ms,
+                    filter.session_id,
+                    directories
+                ],
+                |row| row.get(0),
+            )
+            .map_err(count)?;
+        let mut statement = self.connection.prepare_cached(GROUPS).map_err(count)?;
         let rows = statement
             .query_map(
                 params![
-                    agents_json(&filter.agents)?,
+                    agents,
                     filter.cwd,
                     filter.active_since_ms,
-                    limit,
-                    filter.offset
+                    filter.session_id,
+                    directories,
+                    MAX_SESSION_GROUPS + 1
                 ],
                 |row| {
-                    Ok(SessionEntry {
-                        agent: row.get(0)?,
-                        session_id: row.get(1)?,
-                        path: row.get(2)?,
-                        file_count: row.get(3)?,
-                        parent_session_id: row.get(4)?,
-                        cwd: row.get(5)?,
-                        started_at_ms: row.get(6)?,
-                        updated_at_ms: row.get(7)?,
-                        agent_version: row.get(8)?,
-                        title_range: optional_range(row.get(9)?, row.get(10)?),
+                    Ok(SessionGroup {
+                        cwd: row.get(0)?,
+                        count: row.get(1)?,
+                        updated_at_ms: row.get(2)?,
                     })
                 },
             )
-            .map_err(|error| sql_error("Could not list agent sessions", error))?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|error| sql_error("Could not list agent sessions", error))
+            .map_err(count)?;
+        let mut groups = rows.collect::<Result<Vec<_>, _>>().map_err(count)?;
+        let groups_truncated = groups.len() > MAX_SESSION_GROUPS;
+        groups.truncate(MAX_SESSION_GROUPS);
+        Ok(SessionCounts {
+            total,
+            groups,
+            groups_truncated,
+        })
     }
 
     /// Finds the spans that contain every term of `query.text`, newest first.
@@ -1320,6 +1539,24 @@ fn invalid_output(field: &str) -> CoreError {
 fn agents_json(agents: &[String]) -> Result<String, CoreError> {
     serde_json::to_string(agents)
         .map_err(|_| CoreError::new(ErrorCode::InvalidRequest, "The agent filter is not valid"))
+}
+
+/// The directories of [`SessionFilter::cwd_under`] as a JSON array, without
+/// trailing separators: a root becomes the empty string, which every
+/// absolute path continues after its separator.
+fn directories_json(directories: &[String]) -> Result<String, CoreError> {
+    if directories.len() > MAX_FILTER_DIRECTORIES {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Too many directories in one session filter",
+        ));
+    }
+    let trimmed: Vec<&str> = directories
+        .iter()
+        .map(|directory| directory.trim_end_matches(['/', '\\']))
+        .collect();
+    serde_json::to_string(&trimmed)
+        .map_err(|_| CoreError::new(ErrorCode::Unknown, "Could not encode the directory filter"))
 }
 
 fn optional_range(start: Option<u64>, end: Option<u64>) -> Option<ByteRange> {

@@ -14,9 +14,7 @@
 
 ## 待合入
 
-- [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，新增能力 **`agents` 0**（API-45）：清单 `agents[]` 声明用户自己安装的 Agent CLI、它的运行形式（`native`、`acp`、`terminal`、`update`）和会话来源 `sessionSources`；新增权限 `agents.run`、`agents.native`、`agents.sessions.read`、`agents.usage.read` 与激活事件 `onAgent:<id>`，多声明或少声明都拒绝。`litheFunctions` 0 内新增宿主方法 `agents/write`、`agents/report`、`agents/usage`（Core 直接回答，宿主收不到）和通知 `agents/didStart`、`didOutput`、`didPrompt`、`didCancel`、`didDecidePermission`、`didExit`。Core 新增 `agent-runtime`（启动和回收 CLI 进程、校验会话事件、有界事件队列）与宿主命令 `agents.*`、`agentSessions.*`，会话记录的分组键改为 `sessionID`；安装审查新增 `agent`、`agentSessions` 两类程序；新增 `fixtures/agents/` 两个清单和 23 个拒绝用例，四种官方 SDK 同步封装。版本 0 不运行 ACP 客户端，会话只在可信的本地工作区运行。
-
-- [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 / `litheFunctions` 0 内补充（API-05）：新增宿主方法 `workspace/setDirectoryTypes` 与 `workspace/setDirectoryMarks`（新权限 `workspace.directoryMarks`），允许插件后端在当前工作区上下文注册自定义目录类型（最多 32 个，`id` 以 `plugin.` 开头）与动态目录标记（最多 500 条）；`workspace.resolveDirectoryPresentation` 新增可选 `pluginTypes` 与 `pluginMarks` 字段及输出可选 `pluginId`，按 `user > shared > plugin > glob > vcs > plain` 确定性合并呈现与索引排除，并允许用户手动分配 `plugin.*` 角色；插件提交时的校验与解析器一致，宿主保存下来的登记不会让整次解析失败；清单 schema 与四种官方 SDK（Rust、Go、Node、Java）同步补齐。无新增能力版本、协议版本或 SDK 版本。
+- [#219](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/219)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`agents` 0 内补充（API-45）：宿主命令 `agentSessions.list` 新增 `cwdUnder`（最多 64 个目录，会话的 `cwd` 是其中之一或在它下面才保留，末尾的 `/`、`\` 不影响匹配，没有 `cwd` 的会话不在任何目录下）、`order`（`updated` 最近活动在前，默认；`started` 最近开始在前）和 `counts`；`counts: true` 时回答多出 `total`（不受 `offset`、`limit` 影响）、`groups`（每个目录 `{cwd?, count, updatedAtMs?}`，最近活动在前，最多 500 组）和 `groupsTruncated`。每个会话多出 `messageCount`（插件后端在会话自己文件里报的可搜索片段数，子代理文件不计）、`lastMessageRange`（最后一个片段的范围，用 `agentSessions.read` 读出该条消息，Core 不缓存正文）、`subagentCount`（调用里不同 `threadID` 的个数）和 `model`（最近一次主线程调用的 `model`，没有时用 `requestedModel`；全部调用都带 `threadID` 时取最近一次调用的）。旧 Core 以未知字段拒绝三个新参数，也不回答四个新字段，宿主应显示不带它们的列表。没有新增宿主方法、通知、错误码或能力版本。
 
 - [#207](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/207)（待合入），[@1lck](https://github.com/1lck)，`debugAdapters` 0（API-30）增加可选 `launch.executableSetting`。命令型适配器可读取用户全局文件路径，留空沿用原命令查找；旧宿主会拒绝包含该声明的清单。无新增方法、通知或能力版本。
 
@@ -73,7 +71,7 @@
 | 能力 | 版本 | 日期 | PR |
 | --- | --- | --- | --- |
 | `backend` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| `agents` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| `agents` | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | `buildModelInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildProviders` | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
@@ -137,8 +135,8 @@
 | API-05 | `workspace/listContexts` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-05 | `workspace/getContext` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-05 | `workspace/getFolders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| API-05 | `workspace/setDirectoryTypes` | 0 | 待合入 | [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215) |
-| API-05 | `workspace/setDirectoryMarks` | 0 | 待合入 | [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215) |
+| API-05 | `workspace/setDirectoryTypes` | 0 | 2026-11-27 | [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215) |
+| API-05 | `workspace/setDirectoryMarks` | 0 | 2026-11-27 | [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215) |
 | API-06 | `workspace/readDirectory` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-06 | `workspace/readDirectory` | 0（执行/校验补充） | 待合入 | [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) |
 | API-06 | `workspace/stat` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -224,19 +222,33 @@
 | API-35 | `functions/invoke` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-38 | `network/request` | 0 | 2026-11-23 | [#193](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/193) |
 | API-40 | `workspace/getHostPaths` | 0 | 待合入 | [#151](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/151) |
-| API-45 | `agents/write` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
-| API-45 | `agents/report` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
-| API-45 | `agents/usage` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
-| API-45 | `agents/didStart`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
-| API-45 | `agents/didOutput`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
-| API-45 | `agents/didPrompt`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
-| API-45 | `agents/didCancel`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
-| API-45 | `agents/didDecidePermission`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
-| API-45 | `agents/didExit`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/write` | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/report` | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/usage` | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/usage` | 0（回答新增 `speeds`） | 2026-11-28 | [#217](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/217) |
+| API-45 | `agents/didStart`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didOutput`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didPrompt`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didCancel`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didDecidePermission`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didExit`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | — | `keymapImport/listInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | — | `keymapImport/readChunk` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 
 ## 时间线（新的在上）
+
+### 2026-11-28
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改动 |
+| --- | --- | --- | --- | --- |
+| [#217](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/217) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-45、API-23 | `agents` 0 / `commandInstallers` 0 | `agents/usage` 与 `agentSessions.stats` 的回答新增 `speeds`，按模型列出同一批调用首个令牌之后输出速度的中位数（`{model, calls, medianTokensPerSecond, lowerBound}`，最快的在前），四种官方 SDK 的说明同步。旧宿主不返回该字段，插件应按缺失处理。契约同时写明 `scan` 的一个既有行为：之后的扫描可以用同一个 `key` 再报一次调用（`range` 在它自己的块里），后报的替换先报的，所以到一轮结束才知道计时的后端可以那时补上 `firstTokenMs` 和 `durationMs`；自 #199 起的 Core 都这样处理。同一 PR 里，会话记录的读取支持分页：`agentSessions.list` 可按 `sessionID` 查找、每个会话带 `readBytes`，`agentSessions.read` 回答 `end`（下一页的起点）；读取范围在行中间结束时，Core 只把完整的行交给插件后端的 `read`，并说明后端 `messages` 回答整体不能超过 1 MiB 的函数结果上限。旧 Core 不认 `sessionID`、不回答 `readBytes` 和 `end`，并可能把被截断的行交给后端，后端应跳过不是完整 JSON 的行。同一 PR 里，`commandInstallers` 0 内补充（API-23）：[命令安装](../contract/v1/README.md#command-installers)也服务 Agent 的命令行工具：安装声明的 `commands` 可以由本插件某个 Agent 的 `tool` 所指工具定义的 `commands` 提供，`plugins.commandInstallers.requirements` 在 `systemCommand` 启动之后按声明顺序列出 `kind: "agent"`、`id` 为 Agent ID 的使用方；宿主把插件的受管命令目录和记录的默认目录也用于解析 Agent 工具的 `kind: "command"` 候选（先查 `PATH`）。旧 Core 以 `plugin.manifest.invalid`（`commandInstallers[].commands[]`）拒绝只有 Agent 工具用到的安装声明；需要它的插件同时要求 `agents` 0。同一 PR 里，[IDE 连接](../../../rust/contracts/ide-api/v1.md#agent-sessions)新增两个只读 MCP 工具 `lithe_sessions_search`、`lithe_sessions_read`（API-45），让 MCP 客户端搜索和分页读取用户同意读取的 Agent 会话；宿主只在用户打开 IDE 连接、打开“允许 MCP 客户端搜索本地会话”并同意读取至少一个 Agent 的会话时声明它们，没有声明工具清单的宿主不提供这两个工具。它们是 IDE 连接的工具，不是插件宿主方法。没有新增宿主方法、通知或错误码。 |
+
+### 2026-11-27
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改动 |
+| --- | --- | --- | --- | --- |
+| [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-45 | **`agents` 0** | 清单 `agents[]` 声明用户自己安装的 Agent CLI、它的运行形式（`native`、`acp`、`terminal`、`update`）和会话来源 `sessionSources`；新增权限 `agents.run`、`agents.native`、`agents.sessions.read`、`agents.usage.read` 与激活事件 `onAgent:<id>`，多声明或少声明都拒绝。`litheFunctions` 0 内新增宿主方法 `agents/write`、`agents/report`、`agents/usage`（Core 直接回答，宿主收不到）和通知 `agents/didStart`、`didOutput`、`didPrompt`、`didCancel`、`didDecidePermission`、`didExit`。Core 新增 `agent-runtime`（启动和回收 CLI 进程、校验会话事件、有界事件队列）与宿主命令 `agents.*`、`agentSessions.*`，会话记录的分组键改为 `sessionID`；安装审查新增 `agent`、`agentSessions` 两类程序；新增 `fixtures/agents/` 两个清单和 23 个拒绝用例，四种官方 SDK 同步封装。版本 0 不运行 ACP 客户端，会话只在可信的本地工作区运行。 |
+| [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-05 | `pluginAPIVersion` 0 / `litheFunctions` 0 | 新增宿主方法 `workspace/setDirectoryTypes` 与 `workspace/setDirectoryMarks`（新权限 `workspace.directoryMarks`），允许插件后端在当前工作区上下文注册自定义目录类型（最多 32 个，`id` 以 `plugin.` 开头）与动态目录标记（最多 500 条）；`workspace.resolveDirectoryPresentation` 新增可选 `pluginTypes` 与 `pluginMarks` 字段及输出可选 `pluginId`，按 `user > shared > plugin > glob > vcs > plain` 确定性合并呈现与索引排除，并允许用户手动分配 `plugin.*` 角色；插件提交时的校验与解析器一致，宿主保存下来的登记不会让整次解析失败；清单 schema 与四种官方 SDK（Rust、Go、Node、Java）同步补齐。无新增能力版本、协议版本或 SDK 版本。 |
 
 ### 2026-11-23
 

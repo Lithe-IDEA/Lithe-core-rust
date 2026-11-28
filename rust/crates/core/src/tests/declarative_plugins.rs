@@ -71,6 +71,8 @@ const COMMAND_INSTALLER_FIXTURE: &str =
     contract_file!("fixtures/command-installers/command-installer.plugin.json");
 const COMMAND_INSTALLER_DOWNLOAD_FIXTURE: &str =
     contract_file!("fixtures/command-installers/command-installer-download.plugin.json");
+const COMMAND_INSTALLER_AGENT_FIXTURE: &str =
+    contract_file!("fixtures/command-installers/command-installer-agent.plugin.json");
 const COMMAND_INSTALLER_PLANS: &str =
     contract_file!("fixtures/command-installers/command-installer-plans.json");
 const RUN_CONFIGURATION_TYPES_FIXTURE: &str =
@@ -114,6 +116,7 @@ fn fixture(name: &str) -> Value {
         "project-generator-tool-field.plugin.json" => PROJECT_GENERATOR_TOOL_FIXTURE,
         "command-installer.plugin.json" => COMMAND_INSTALLER_FIXTURE,
         "command-installer-download.plugin.json" => COMMAND_INSTALLER_DOWNLOAD_FIXTURE,
+        "command-installer-agent.plugin.json" => COMMAND_INSTALLER_AGENT_FIXTURE,
         "run-configuration-types.plugin.json" => RUN_CONFIGURATION_TYPES_FIXTURE,
         "before-launch-tasks.plugin.json" => BEFORE_LAUNCH_TASKS_FIXTURE,
         "agents.plugin.json" => AGENTS_FIXTURE,
@@ -152,6 +155,7 @@ fn contract_fixtures_and_official_plugins_validate() {
         PROJECT_GENERATOR_TOOL_FIXTURE,
         COMMAND_INSTALLER_FIXTURE,
         COMMAND_INSTALLER_DOWNLOAD_FIXTURE,
+        COMMAND_INSTALLER_AGENT_FIXTURE,
         RUN_CONFIGURATION_TYPES_FIXTURE,
         BEFORE_LAUNCH_TASKS_FIXTURE,
         AGENTS_FIXTURE,

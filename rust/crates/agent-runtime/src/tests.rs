@@ -174,6 +174,8 @@ fn scan(params: &Value) -> Value {
                 "startedAtMs": record["at"],
                 "model": record["model"],
                 "tokens": { "input": record["input"], "output": record["output"] },
+                "firstTokenMs": record["first"],
+                "durationMs": record["duration"],
                 "range": range,
             })),
             Some("limits") => {
@@ -1222,12 +1224,70 @@ fn write_session_file(harness: &Harness, now: i64) -> PathBuf {
     let lines = [
         json!({ "type": "session", "id": "s1", "cwd": "/work/project", "at": now }),
         json!({ "type": "user", "session": "s1", "text": "hello from the user", "at": now }),
-        json!({ "type": "call", "session": "s1", "key": "c1", "model": "sample-model", "input": 100, "output": 20, "at": now }),
+        json!({ "type": "call", "session": "s1", "key": "c1", "model": "sample-model", "input": 100, "output": 300, "first": 500, "duration": 2500, "at": now }),
         json!({ "type": "limits", "at": now, "used": 40.0 }),
     ];
     let text: String = lines.iter().map(|line| format!("{line}\n")).collect();
     fs::write(&path, text).unwrap();
     path
+}
+
+#[test]
+fn records_list_filters_under_directories_counts_and_describes_activity() {
+    let harness = Harness::new("records-list", ALL_GRANTS);
+    let now = crate::now_ms();
+    write_session_file(&harness, now);
+    harness.run(
+        "agentSessions.sync",
+        json!({ "pluginID": PLUGIN, "agentID": AGENT }),
+    );
+
+    let answer = harness.run(
+        "agentSessions.list",
+        json!({ "cwdUnder": ["/work/"], "order": "started", "counts": true, "limit": 1 }),
+    );
+    assert_eq!(answer["total"], 1, "{answer}");
+    assert_eq!(answer["groupsTruncated"], false, "{answer}");
+    assert_eq!(
+        answer["groups"],
+        json!([{ "cwd": "/work/project", "count": 1, "updatedAtMs": now }])
+    );
+    let session = &answer["sessions"][0];
+    assert_eq!(session["messageCount"], 1, "{answer}");
+    assert_eq!(session["subagentCount"], 0, "{answer}");
+    assert_eq!(session["model"], "sample-model", "{answer}");
+    // The last message's range reads back the message itself.
+    let read = harness.run(
+        "agentSessions.read",
+        json!({ "agent": AGENT_KEY, "path": session["path"], "range": session["lastMessageRange"] }),
+    );
+    assert_eq!(read["messages"][0]["text"], "hello from the user", "{read}");
+
+    // Without `counts` the answer keeps its old shape; a directory that holds
+    // none of the sessions lists none and counts none.
+    let plain = harness.run("agentSessions.list", json!({}));
+    assert!(plain.get("total").is_none(), "{plain}");
+    let elsewhere = harness.run(
+        "agentSessions.list",
+        json!({ "cwdUnder": ["/work/project-two"], "counts": true }),
+    );
+    assert_eq!(
+        (elsewhere["sessions"].clone(), elsewhere["total"].clone()),
+        (json!([]), json!(0))
+    );
+
+    for payload in [
+        json!({ "cwdUnder": [""] }),
+        json!({ "cwdUnder": ["/work\nproject"] }),
+        json!({ "cwdUnder": ["/w".repeat(2_049)] }),
+        json!({ "cwdUnder": vec!["/work"; 65] }),
+        json!({ "order": "title" }),
+    ] {
+        assert_eq!(
+            harness.refused("agentSessions.list", payload),
+            "agents.invalidPayload"
+        );
+    }
 }
 
 #[test]
@@ -1274,8 +1334,58 @@ fn records_sync_list_search_read_and_sum_through_the_plugin() {
     );
     assert_eq!(
         read,
-        json!({ "changed": false, "messages": [{ "role": "user", "text": "hello from the user" }] })
+        json!({
+            "changed": false,
+            "messages": [{ "role": "user", "text": "hello from the user" }],
+            "end": hits[0]["range"]["end"],
+        })
     );
+
+    // The list gives how much of the file the cache has read and finds one
+    // session by its ID, so a viewer can page through a whole record.
+    let size = fs::metadata(&file).unwrap().len();
+    assert_eq!(sessions[0]["readBytes"], size, "{sessions}");
+    let found = harness.run("agentSessions.list", json!({ "sessionID": "s1" }))["sessions"].clone();
+    assert_eq!(found.as_array().map(Vec::len), Some(1), "{found}");
+    let none = harness.run("agentSessions.list", json!({ "sessionID": "s9" }))["sessions"].clone();
+    assert_eq!(none.as_array().map(Vec::len), Some(0), "{none}");
+    let whole = harness.run(
+        "agentSessions.read",
+        json!({ "agent": AGENT_KEY, "path": path_text(&file), "range": { "start": 0, "end": size } }),
+    );
+    assert_eq!(whole["end"], size, "{whole}");
+    assert_eq!(
+        whole["messages"].as_array().map(Vec::len),
+        Some(1),
+        "{whole}"
+    );
+    // A page that ends inside a line stops at the line before it, and the
+    // plugin never sees the cut line.
+    let text = fs::read_to_string(&file).unwrap();
+    let second = text.find('\n').unwrap() as u64 + 1;
+    let third = second + text[second as usize..].find('\n').unwrap() as u64 + 1;
+    let page = harness.run(
+        "agentSessions.read",
+        json!({ "agent": AGENT_KEY, "path": path_text(&file), "range": { "start": 0, "end": third + 5 } }),
+    );
+    assert_eq!(page["end"], third, "{page}");
+    assert_eq!(page["messages"].as_array().map(Vec::len), Some(1), "{page}");
+    let last = harness
+        .link
+        .calls_of("sessions.read")
+        .last()
+        .cloned()
+        .unwrap();
+    let sent = last["items"][0]["lines"].as_array().map(Vec::len);
+    assert_eq!(sent, Some(2), "{last}");
+    let calls = harness.link.calls_of("sessions.read").len();
+    let inside = harness.run(
+        "agentSessions.read",
+        json!({ "agent": AGENT_KEY, "path": path_text(&file), "range": { "start": second + 1, "end": second + 5 } }),
+    );
+    let expected = json!({ "changed": false, "messages": [], "end": second + 1 });
+    assert_eq!(inside, expected);
+    assert_eq!(harness.link.calls_of("sessions.read").len(), calls);
     assert_eq!(
         harness.refused(
             "agentSessions.read",
@@ -1287,6 +1397,9 @@ fn records_sync_list_search_read_and_sum_through_the_plugin() {
     let stats = harness.run("agentSessions.stats", json!({ "groupBy": "model" }));
     assert_eq!(stats["summaries"][0]["calls"], 1, "{stats}");
     assert_eq!(stats["summaries"][0]["tokens"]["input"], 100, "{stats}");
+    // 300 output tokens in the 2 seconds after the first token.
+    let speed = json!([{ "model": "sample-model", "calls": 1, "medianTokensPerSecond": 150.0, "lowerBound": false }]);
+    assert_eq!(stats["speeds"], speed, "{stats}");
     assert_eq!(
         stats["rateLimits"][0]["windows"][0]["usedPercent"], 40.0,
         "{stats}"
@@ -1299,6 +1412,7 @@ fn records_sync_list_search_read_and_sum_through_the_plugin() {
         .answer(AGENTS_USAGE, json!({ "groupBy": "agent" }))
         .expect("usage");
     assert_eq!(usage["summaries"][0]["calls"], 1, "{usage}");
+    assert_eq!(usage["speeds"], speed, "{usage}");
     let text = usage.to_string();
     for private in ["\"s1\"", "/work/project", "hello", "s1.jsonl"] {
         assert!(!text.contains(private), "usage carries {private}: {text}");

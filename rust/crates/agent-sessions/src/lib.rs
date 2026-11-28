@@ -39,8 +39,9 @@ pub use model::{
     ByteRange, CallRecord, IndexSpan, ScanChunk, ScanOutput, SessionMeta, SessionParser, Tokens,
 };
 pub use store::{
-    database_file_name, CallEntry, CallFilter, FileFailure, SearchHit, SearchQuery, SessionEntry,
-    SessionFilter, SessionStore, SyncReport, MAX_ID_BYTES, MAX_INDEXED_SPAN_BYTES, MAX_LABEL_BYTES,
-    MAX_READ_BYTES, MAX_RECORDS_PER_CHUNK, MAX_SEARCH_HITS, MAX_SESSIONS_PAGE, MAX_STATE_BYTES,
+    database_file_name, CallEntry, CallFilter, FileFailure, SearchHit, SearchQuery, SessionCounts,
+    SessionEntry, SessionFilter, SessionGroup, SessionOrder, SessionStore, SyncReport,
+    MAX_FILTER_DIRECTORIES, MAX_ID_BYTES, MAX_INDEXED_SPAN_BYTES, MAX_LABEL_BYTES, MAX_READ_BYTES,
+    MAX_RECORDS_PER_CHUNK, MAX_SEARCH_HITS, MAX_SESSIONS_PAGE, MAX_SESSION_GROUPS, MAX_STATE_BYTES,
     SCHEMA_VERSION,
 };
