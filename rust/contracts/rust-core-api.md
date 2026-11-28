@@ -498,6 +498,12 @@ or removing a command fails until the table changes in the same commit.
 | `agentSessions.read` | Read one recorded range as messages and where the next page starts |
 | `agentSessions.stats` | Sum recorded agent usage with the latest rate limits |
 | `agentSessions.calls` | List a page of recorded agent calls, most recent first, with their cost, cache hit rate and speed |
+| `agentLibrary.configure` | Open the agent library in the platform's application data |
+| `agentLibrary.read` | Read the library and what each configurable agent's instructions, skills, MCP servers and hooks hold |
+| `agentLibrary.save` | Replace the library the user edited if it is still at the revision read |
+| `agentLibrary.apply` | Apply one library change the user chose to one agent's configuration |
+| `agentLibrary.importSkill` | Copy a skill from an agent or a directory the user chose into the library |
+| `agentLibrary.removeSkill` | Remove a library skill and its links from agents |
 | `plugins.declarative.validate` | Validate and normalize a declarative plugin manifest |
 | `plugins.ui.applyResult` | Check a backend result for a plugin view and return the whole view to draw |
 | `plugins.web.open` | Register a plugin page for a web tool window |

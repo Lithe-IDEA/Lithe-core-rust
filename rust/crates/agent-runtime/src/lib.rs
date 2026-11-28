@@ -10,9 +10,11 @@
 //! Core knows no agent: every agent-specific name, argument, protocol and file
 //! layout comes from a plugin manifest and its backend.
 //!
-//! The host drives the runtime with two command families. `agents.*` covers
-//! the catalog of declared agents and the live sessions; `agentSessions.*`
-//! covers the local session records. Backends reach it with
+//! The host drives the runtime with three command families. `agents.*`
+//! covers the catalog of declared agents and the live sessions;
+//! `agentSessions.*` covers the local session records; `agentLibrary.*`
+//! covers Lithe's library of MCP servers, hooks, skills and instructions and
+//! applies them to the agents' own configuration (the `library` module). Backends reach it with
 //! `lithe/host/agents/*` requests, which the engine hands to the installed
 //! [`AgentHost`] and which never reach the host application.
 //!
@@ -27,12 +29,16 @@
 //! - Session records are read only for agents the user granted
 //!   `agents.sessions.read`. Plugins granted `agents.usage.read` see totals
 //!   and rate limits, never text, titles, session IDs or directories.
+//! - An agent's configuration changes only for a request the user started,
+//!   only for plugins granted `agents.configuration`, and MCP servers and
+//!   hooks only through a staged copy the plugin edits and Core checks.
 //! - Logs carry opaque IDs and stable codes, never what flows through a
 //!   session.
 
 mod backend;
 mod catalog;
 mod events;
+mod library;
 mod live;
 mod records;
 
@@ -41,6 +47,7 @@ mod tests;
 
 use backend::{BackendLink, EngineLink};
 use catalog::Catalog;
+use library::Library;
 use lithe_lsp_engine::agent_host::{install_agent_host, AgentBackend, AgentHost, AgentHostFailure};
 use lithe_plugin_rpc::{codes, AGENTS_REPORT, AGENTS_USAGE, AGENTS_WRITE};
 use lithe_protocol::{CoreError, ErrorCode};
@@ -78,12 +85,24 @@ pub const AGENT_SESSION_COMMANDS: &[&str] = &[
     "agentSessions.calls",
 ];
 
-/// The agent catalog, the live sessions and the session records.
+/// The commands of the `agentLibrary.*` family.
+pub const AGENT_LIBRARY_COMMANDS: &[&str] = &[
+    "agentLibrary.configure",
+    "agentLibrary.read",
+    "agentLibrary.save",
+    "agentLibrary.apply",
+    "agentLibrary.importSkill",
+    "agentLibrary.removeSkill",
+];
+
+/// The agent catalog, the live sessions, the session records and the
+/// agent library.
 pub(crate) struct Runtime {
     pub link: Arc<dyn BackendLink>,
     pub catalog: Catalog,
     pub live: Live,
     pub records: Records,
+    pub library: Library,
 }
 
 impl Runtime {
@@ -93,6 +112,7 @@ impl Runtime {
             catalog: Catalog::default(),
             live: Live::default(),
             records: Records::default(),
+            library: Library::default(),
         })
     }
 
@@ -129,6 +149,12 @@ impl Runtime {
             "agentSessions.read" => self.records.read(self, payload),
             "agentSessions.stats" => self.records.stats(self, payload),
             "agentSessions.calls" => self.records.calls(self, payload),
+            "agentLibrary.configure" => self.library.configure(payload),
+            "agentLibrary.read" => self.library.read(self, payload),
+            "agentLibrary.save" => self.library.save(payload),
+            "agentLibrary.apply" => self.library.apply(self, payload),
+            "agentLibrary.importSkill" => self.library.import_skill(self, payload),
+            "agentLibrary.removeSkill" => self.library.remove_skill(self, payload),
             _ => Err(CoreError::new(
                 ErrorCode::NotSupported,
                 format!("Unknown agent command {command}."),
@@ -174,7 +200,7 @@ fn runtime() -> &'static Arc<Runtime> {
     })
 }
 
-/// Runs one `agents.*` or `agentSessions.*` command.
+/// Runs one `agents.*`, `agentSessions.*` or `agentLibrary.*` command.
 pub fn execute(command: &str, payload: Value) -> Result<Value, CoreError> {
     runtime().execute(command, payload)
 }

@@ -17,6 +17,10 @@
 //! - `sessionSources` names the directories of the CLI's session files and
 //!   the backend functions that parse and display them. Core reads the files
 //!   only after the user consents, per agent.
+//! - `configuration` names where the CLI keeps its instructions, skills and
+//!   the files that hold its MCP servers and hooks, and the backend functions
+//!   that read and edit those files. Core writes them only when the user
+//!   applies a change, and only through a staged copy it checks first.
 //!
 //! Note: the decision is recorded in .agents/notes/proposed/architecture/2026-11-25-agent-native-cli-and-local-session-records.md
 
@@ -76,6 +80,14 @@ pub const PERMISSION_AGENTS_RUN: &str = "agents.run";
 /// agent, Core reads the listed session files and the backend parses them.
 pub const PERMISSION_AGENTS_SESSIONS: &str = "agents.sessions.read";
 
+/// Manifest permission of `configuration`: when the user applies a change
+/// from Lithe's agent library, Core edits the declared configuration files,
+/// writes the instruction file and links skills into the skills directory.
+pub const PERMISSION_AGENTS_CONFIGURATION: &str = "agents.configuration";
+
+/// Most configuration files one agent declares.
+pub const MAX_CONFIGURATION_FILES: usize = 8;
+
 /// Template variable of the user's home directory in a session root.
 const USER_HOME_VARIABLE: &str = "${userHome}";
 
@@ -108,6 +120,51 @@ pub struct AgentDeclaration {
     /// Where the CLI keeps its session files.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub session_sources: Vec<SessionSourceDeclaration>,
+    /// Where the CLI keeps the configuration Lithe's agent library manages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<ConfigurationDeclaration>,
+}
+
+/// The configuration of an agent that Lithe's agent library reads and
+/// changes: an instruction file and a skills directory Core handles itself,
+/// and files in the CLI's own formats the backend reads and edits.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConfigurationDeclaration {
+    /// The Markdown file the CLI reads as the user's own instructions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<RootsDeclaration>,
+    /// The directory of the CLI's user skills, one directory with a
+    /// `SKILL.md` per skill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<RootsDeclaration>,
+    /// The files that hold the CLI's MCP servers and hooks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<ConfigurationFileDeclaration>,
+    /// Backend function that reports the MCP servers and hooks of `files`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read: Option<String>,
+    /// Backend function that applies changes to a staged copy of one file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edit: Option<String>,
+}
+
+/// A path given as root candidates; the first that resolves is used.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RootsDeclaration {
+    /// Path candidates, written like session roots.
+    pub roots: Vec<String>,
+}
+
+/// One configuration file in the CLI's own format.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConfigurationFileDeclaration {
+    /// The file's ID, unique within the agent.
+    pub id: String,
+    /// Path candidates, written like session roots.
+    pub roots: Vec<String>,
 }
 
 /// The backend function that answers a native session's command line.
@@ -183,11 +240,16 @@ pub struct DeclarationContext<'a> {
 }
 
 impl AgentDeclaration {
-    /// Whether Core starts the backend for this agent: a native session or a
-    /// session source is served by backend functions. A terminal or ACP agent
-    /// alone runs only its tool.
+    /// Whether Core starts the backend for this agent: a native session, a
+    /// session source or configuration files are served by backend functions.
+    /// A terminal or ACP agent alone runs only its tool.
     pub fn needs_backend(&self) -> bool {
-        self.native.is_some() || !self.session_sources.is_empty()
+        self.native.is_some()
+            || !self.session_sources.is_empty()
+            || self
+                .configuration
+                .as_ref()
+                .is_some_and(|configuration| configuration.read.is_some())
     }
 }
 
@@ -200,6 +262,12 @@ pub fn activation_event(agent: &AgentDeclaration) -> String {
 /// Whether any agent needs the backend.
 pub fn uses_backend(agents: &[AgentDeclaration]) -> bool {
     agents.iter().any(AgentDeclaration::needs_backend)
+}
+
+/// Whether any agent declares configuration, which needs
+/// `agents.configuration`.
+pub fn has_configuration(agents: &[AgentDeclaration]) -> bool {
+    agents.iter().any(|agent| agent.configuration.is_some())
 }
 
 /// Whether any agent has a native session, which needs `agents.native`.
@@ -283,10 +351,13 @@ pub fn validate_declarations(
             }
         }
         check_session_sources(&agent.session_sources, &field)?;
-        if (agent.native.is_some() || !agent.session_sources.is_empty()) && !context.has_backend {
+        if let Some(configuration) = &agent.configuration {
+            check_configuration(configuration, &format!("{field}.configuration"))?;
+        }
+        if agent.needs_backend() && !context.has_backend {
             return Err(invalid(
                 field,
-                "Native sessions and session sources are served by the plugin backend.",
+                "Native sessions, session sources and configuration files are served by the plugin backend.",
             ));
         }
     }
@@ -400,6 +471,99 @@ fn check_session_sources(
     Ok(())
 }
 
+fn check_roots(roots: &[String], field: &str) -> Validation<()> {
+    if roots.is_empty() || roots.len() > MAX_ROOTS {
+        return Err(invalid(
+            field,
+            format!("A path has 1 to {MAX_ROOTS} candidates."),
+        ));
+    }
+    for (index, root) in roots.iter().enumerate() {
+        let named = parse_root(root).is_some_and(|(_, segments)| !segments.is_empty());
+        if !named {
+            return Err(invalid(
+                format!("{field}[{index}]"),
+                "A configuration path starts with ${userHome} or ${env:NAME}, followed by at least one relative path segment without `..`.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn check_configuration(configuration: &ConfigurationDeclaration, field: &str) -> Validation<()> {
+    if configuration.instructions.is_none()
+        && configuration.skills.is_none()
+        && configuration.files.is_empty()
+    {
+        return Err(invalid(
+            field,
+            "Configuration declares at least one of instructions, skills and files.",
+        ));
+    }
+    if let Some(instructions) = &configuration.instructions {
+        check_roots(&instructions.roots, &format!("{field}.instructions.roots"))?;
+    }
+    if let Some(skills) = &configuration.skills {
+        check_roots(&skills.roots, &format!("{field}.skills.roots"))?;
+    }
+    if configuration.files.len() > MAX_CONFIGURATION_FILES {
+        return Err(invalid(
+            format!("{field}.files"),
+            format!("An agent declares at most {MAX_CONFIGURATION_FILES} configuration files."),
+        ));
+    }
+    let mut ids = BTreeSet::new();
+    for (index, file) in configuration.files.iter().enumerate() {
+        let file_field = format!("{field}.files[{index}]");
+        if !is_short_id(&file.id) {
+            return Err(invalid(
+                format!("{file_field}.id"),
+                "A configuration file ID uses lowercase letters, digits and hyphens.",
+            ));
+        }
+        if !ids.insert(file.id.as_str()) {
+            return Err(invalid(
+                format!("{file_field}.id"),
+                "A configuration file is declared more than once.",
+            ));
+        }
+        check_roots(&file.roots, &format!("{file_field}.roots"))?;
+    }
+    match (configuration.files.is_empty(), &configuration.read) {
+        (false, None) => {
+            return Err(invalid(
+                format!("{field}.read"),
+                "Configuration files need a read function.",
+            ))
+        }
+        (true, Some(_)) => {
+            return Err(invalid(
+                format!("{field}.read"),
+                "A read function reads the declared configuration files.",
+            ))
+        }
+        _ => {}
+    }
+    if configuration.edit.is_some() && configuration.read.is_none() {
+        return Err(invalid(
+            format!("{field}.edit"),
+            "An edit function needs configuration files and a read function.",
+        ));
+    }
+    for (name, function) in [("read", &configuration.read), ("edit", &configuration.edit)] {
+        if function
+            .as_deref()
+            .is_some_and(|function| !is_function_id(function))
+        {
+            return Err(invalid(
+                format!("{field}.{name}"),
+                "A configuration function ID is dot-separated lowerCamelCase segments.",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// The first part of a root: where it starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RootBase {
@@ -438,13 +602,27 @@ fn parse_root(root: &str) -> Option<(RootBase, Vec<&str>)> {
     Some((base, segments))
 }
 
-/// The environment variables the session roots of `agent` read, so the host
-/// passes only those to [`resolve_root`].
+/// The environment variables the session and configuration roots of `agent`
+/// read, so the host passes only those to [`resolve_root`].
 pub fn root_variables(agent: &AgentDeclaration) -> BTreeSet<String> {
+    let configuration = agent.configuration.iter().flat_map(|configuration| {
+        configuration
+            .instructions
+            .iter()
+            .chain(configuration.skills.iter())
+            .flat_map(|roots| roots.roots.iter())
+            .chain(
+                configuration
+                    .files
+                    .iter()
+                    .flat_map(|file| file.roots.iter()),
+            )
+    });
     agent
         .session_sources
         .iter()
         .flat_map(|source| source.roots.iter())
+        .chain(configuration)
         .filter_map(|root| match parse_root(root)?.0 {
             RootBase::Environment(name) => Some(name),
             RootBase::UserHome => None,
@@ -565,6 +743,14 @@ pub fn catalog_entry(plugin_id: &str, agent: &AgentDeclaration) -> Value {
         "forms": forms(agent),
         "readsSessions": !agent.session_sources.is_empty(),
     });
+    if let Some(configuration) = &agent.configuration {
+        entry["configuration"] = json!({
+            "instructions": configuration.instructions.is_some(),
+            "skills": configuration.skills.is_some(),
+            "files": !configuration.files.is_empty(),
+            "editable": configuration.edit.is_some(),
+        });
+    }
     if let Some(icon) = &agent.icon {
         entry["icon"] = json!(icon);
     }
@@ -620,6 +806,26 @@ pub fn programs(agent: &AgentDeclaration) -> Vec<Value> {
             "roots": source.roots,
             "include": source.include,
         }));
+    }
+    if let Some(configuration) = &agent.configuration {
+        let mut program = json!({
+            "kind": "agentConfiguration",
+            "agentID": agent.id,
+            "tool": agent.tool,
+            "files": configuration
+                .files
+                .iter()
+                .map(|file| json!({ "id": file.id, "roots": file.roots }))
+                .collect::<Vec<_>>(),
+            "editable": configuration.edit.is_some(),
+        });
+        if let Some(instructions) = &configuration.instructions {
+            program["instructions"] = json!(instructions.roots);
+        }
+        if let Some(skills) = &configuration.skills {
+            program["skills"] = json!(skills.roots);
+        }
+        programs.push(program);
     }
     programs
 }

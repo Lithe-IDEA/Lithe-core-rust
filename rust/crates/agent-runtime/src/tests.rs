@@ -1725,3 +1725,5 @@ fn chunk_lines_keep_byte_offsets_and_text_lines_drop_line_breaks() {
     assert_eq!(crate::records::text_lines_for_test(b"a\r\nb\n"), ["a", "b"]);
     assert!(crate::records::text_lines_for_test(b"").is_empty());
 }
+
+mod library;

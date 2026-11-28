@@ -17,6 +17,7 @@
     "signatureRequirement": "publisherPackage"
   },
   "permissions": [
+    "agents.configuration",
     "agents.native",
     "agents.run",
     "agents.sessions.read",
@@ -58,7 +59,30 @@
           "scan": "example.sessions.scan",
           "read": "example.sessions.read"
         }
-      ]
+      ],
+      "configuration": {
+        "instructions": {
+          "roots": [
+            "${env:EXAMPLE_HOME}/INSTRUCTIONS.md",
+            "${userHome}/.example/INSTRUCTIONS.md"
+          ]
+        },
+        "skills": {
+          "roots": [
+            "${userHome}/.example/skills"
+          ]
+        },
+        "files": [
+          {
+            "id": "main",
+            "roots": [
+              "${userHome}/.example/config.json"
+            ]
+          }
+        ],
+        "read": "example.configuration.read",
+        "edit": "example.configuration.edit"
+      }
     }
   ],
   "backend": {

@@ -247,3 +247,136 @@ fn launch_params_carry_resume_only_when_given() {
         json!("abc")
     );
 }
+
+fn configured() -> Value {
+    let mut value = sample();
+    value["configuration"] = json!({
+        "instructions": { "roots": ["${userHome}/.sample/INSTRUCTIONS.md"] },
+        "skills": { "roots": ["${env:SAMPLE_CONFIG}/skills", "${userHome}/.sample/skills"] },
+        "files": [
+            { "id": "settings", "roots": ["${userHome}/.sample/settings.json"] },
+            { "id": "servers", "roots": ["${userHome}/.sample.json"] }
+        ],
+        "read": "configuration.read",
+        "edit": "configuration.edit"
+    });
+    value
+}
+
+#[test]
+fn accepts_configuration_and_reports_it() {
+    let mut agents = [agent(configured())];
+    check(&mut agents, true).expect("configuration validates");
+    assert!(has_configuration(&agents));
+    assert!(!has_configuration(&[agent(sample())]));
+    assert_eq!(
+        root_variables(&agents[0]),
+        BTreeSet::from(["SAMPLE_CONFIG".to_string(), "SAMPLE_HOME".to_string()])
+    );
+
+    let entry = catalog_entry("dev.lithe.test.agents", &agents[0]);
+    assert_eq!(
+        entry["configuration"],
+        json!({ "instructions": true, "skills": true, "files": true, "editable": true })
+    );
+    assert!(entry["configuration"].get("read").is_none());
+
+    let programs = programs(&agents[0]);
+    let program = programs
+        .iter()
+        .find(|program| program["kind"] == "agentConfiguration")
+        .expect("configuration is in the install review");
+    assert_eq!(program["files"][0]["id"], "settings");
+    assert_eq!(program["editable"], true);
+    assert_eq!(program["skills"][1], "${userHome}/.sample/skills");
+}
+
+#[test]
+fn configuration_files_need_a_backend() {
+    let mut value = configured();
+    value.as_object_mut().unwrap().remove("native");
+    value.as_object_mut().unwrap().remove("sessionSources");
+    assert!(agent(value.clone()).needs_backend());
+    assert_eq!(rejected_field(value.clone(), false), "agents[0]");
+
+    let configuration = value["configuration"].as_object_mut().unwrap();
+    for field in ["files", "read", "edit"] {
+        configuration.remove(field);
+    }
+    assert!(!agent(value.clone()).needs_backend());
+    check(&mut [agent(value)], false).expect("instructions and skills need no backend");
+}
+
+#[test]
+fn configuration_is_bounded_and_consistent() {
+    let cases: [(&str, Value, &str); 9] = [
+        ("empty", json!({}), "agents[0].configuration"),
+        (
+            "a root without a file name",
+            json!({ "instructions": { "roots": ["${userHome}"] } }),
+            "agents[0].configuration.instructions.roots[0]",
+        ),
+        (
+            "a root leaving the base",
+            json!({ "skills": { "roots": ["${userHome}/../skills"] } }),
+            "agents[0].configuration.skills.roots[0]",
+        ),
+        (
+            "too many candidates",
+            json!({ "skills": { "roots": [
+                "${userHome}/a", "${userHome}/b", "${userHome}/c", "${userHome}/d", "${userHome}/e"
+            ] } }),
+            "agents[0].configuration.skills.roots",
+        ),
+        (
+            "files without read",
+            json!({ "files": [{ "id": "settings", "roots": ["${userHome}/s.json"] }] }),
+            "agents[0].configuration.read",
+        ),
+        (
+            "read without files",
+            json!({ "instructions": { "roots": ["${userHome}/A.md"] }, "read": "configuration.read" }),
+            "agents[0].configuration.read",
+        ),
+        (
+            "edit without read",
+            json!({ "instructions": { "roots": ["${userHome}/A.md"] }, "edit": "configuration.edit" }),
+            "agents[0].configuration.edit",
+        ),
+        (
+            "a duplicate file",
+            json!({
+                "files": [
+                    { "id": "settings", "roots": ["${userHome}/a.json"] },
+                    { "id": "settings", "roots": ["${userHome}/b.json"] }
+                ],
+                "read": "configuration.read"
+            }),
+            "agents[0].configuration.files[1].id",
+        ),
+        (
+            "an invalid function ID",
+            json!({
+                "files": [{ "id": "settings", "roots": ["${userHome}/a.json"] }],
+                "read": "Configuration Read"
+            }),
+            "agents[0].configuration.read",
+        ),
+    ];
+    for (name, configuration, field) in cases {
+        let mut value = sample();
+        value["configuration"] = configuration;
+        assert_eq!(rejected_field(value, true), field, "{name}");
+    }
+
+    let mut many = sample();
+    let files: Vec<Value> = (0..=MAX_CONFIGURATION_FILES)
+        .map(|index| json!({ "id": format!("file-{index}"), "roots": [format!("${{userHome}}/{index}.json")] }))
+        .collect();
+    many["configuration"] = json!({ "files": files, "read": "configuration.read" });
+    assert_eq!(rejected_field(many, true), "agents[0].configuration.files");
+
+    let mut unknown = configured();
+    unknown["configuration"]["environment"] = json!({});
+    assert!(serde_json::from_value::<AgentDeclaration>(unknown).is_err());
+}

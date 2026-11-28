@@ -11,6 +11,7 @@ lithe-agent-sessions = { path = "../agent-sessions" }
 lithe-diagnostics = { path = "../diagnostics" }
 lithe-lsp-engine = { path = "../lsp-engine" }
 lithe-lsp-transport = { path = "../lsp-transport" }
+lithe-platform = { path = "../platform" }
 lithe-plugin-agents = { path = "../plugin-agents" }
 lithe-plugin-manifest = { path = "../plugin-manifest" }
 lithe-plugin-model = { path = "../plugin-model" }
@@ -20,6 +21,7 @@ lithe-request-context = { path = "../request-context" }
 lithe-workspace = { path = "../workspace" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 
 [dev-dependencies]
 lithe-diagnostics = { path = "../diagnostics", features = ["test-support"] }

@@ -6,7 +6,8 @@
 //! session only ever runs what a valid manifest declares.
 
 use lithe_plugin_agents::{
-    catalog_entry, AgentDeclaration, PERMISSION_AGENTS_RUN, PERMISSION_AGENTS_SESSIONS,
+    catalog_entry, AgentDeclaration, PERMISSION_AGENTS_CONFIGURATION, PERMISSION_AGENTS_RUN,
+    PERMISSION_AGENTS_SESSIONS,
 };
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
@@ -32,6 +33,10 @@ impl PluginAgents {
     pub fn may_read_sessions(&self) -> bool {
         self.granted.contains(PERMISSION_AGENTS_SESSIONS)
     }
+
+    pub fn may_configure(&self) -> bool {
+        self.granted.contains(PERMISSION_AGENTS_CONFIGURATION)
+    }
 }
 
 /// An agent found in the catalog.
@@ -41,6 +46,7 @@ pub(crate) struct CatalogAgent {
     pub agent: AgentDeclaration,
     pub may_run: bool,
     pub may_read_sessions: bool,
+    pub may_configure: bool,
 }
 
 impl CatalogAgent {
@@ -147,6 +153,9 @@ impl Catalog {
                     let mut entry = catalog_entry(plugin_id, agent);
                     entry["mayRun"] = json!(plugin.may_run());
                     entry["mayReadSessions"] = json!(plugin.may_read_sessions());
+                    if agent.configuration.is_some() {
+                        entry["mayConfigure"] = json!(plugin.may_configure());
+                    }
                     entry
                 })
             })
@@ -163,6 +172,7 @@ impl Catalog {
             agent: agent.clone(),
             may_run: plugin.may_run(),
             may_read_sessions: plugin.may_read_sessions(),
+            may_configure: plugin.may_configure(),
         })
     }
 
@@ -184,9 +194,32 @@ impl Catalog {
                     agent: agent.clone(),
                     may_run: plugin.may_run(),
                     may_read_sessions: true,
+                    may_configure: plugin.may_configure(),
                 })
             })
             .filter(|agent| !agent.agent.session_sources.is_empty())
+            .collect()
+    }
+
+    /// Every agent that declares configuration, granted or not, in catalog
+    /// order.
+    pub fn configurable(&self) -> Vec<CatalogAgent> {
+        let plugins = self.plugins.read().unwrap_or_else(PoisonError::into_inner);
+        plugins
+            .iter()
+            .flat_map(|(plugin_id, plugin)| {
+                plugin
+                    .agents
+                    .iter()
+                    .filter(|agent| agent.configuration.is_some())
+                    .map(move |agent| CatalogAgent {
+                        plugin_id: plugin_id.clone(),
+                        agent: agent.clone(),
+                        may_run: plugin.may_run(),
+                        may_read_sessions: plugin.may_read_sessions(),
+                        may_configure: plugin.may_configure(),
+                    })
+            })
             .collect()
     }
 }
