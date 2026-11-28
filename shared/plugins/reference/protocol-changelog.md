@@ -14,6 +14,8 @@
 
 ## 待合入
 
+- [#218](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/218)（待合入），[@WhiteZeek](https://github.com/WhiteZeek)，`buildSystems` 0 新增可选的 `detection.ignoredPaths`。规则只过滤当前构建系统的候选目录。工作区规则优先。旧宿主拒绝包含新字段的清单。
+
 - [#220](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/220)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`agents` 0 内补充（API-45）：原生会话可以报告用户可改的会话设置，用户在宿主里切换模型、推理等级或模式。会话事件新增 `configOptions`（对应 ACP 的 session config options，ACP 的 `thought_level` 写作 `thoughtLevel`）：最多 16 个 `{id, name, description?, category?, currentValue, options}`，`category` 为 `model`、`thoughtLevel`、`mode` 之一，`options` 为 1–128 个 `{value, name, description?}`；设置 ID 唯一、同一设置的值唯一、`currentValue` 必须在 `options` 里，`thoughtLevel` 的值从低到高排列；每次报告替换上一次，空列表撤回全部设置；这个事件不属于任何回合，随时可以报告。新增宿主命令 `agents.setConfigOption {session, option, value}` → `{}`：只接受用户发起的请求（`agents.userActionRequired`），回合进行中也可以调用；设置或值不在后端最近一次报告里时分别拒绝为新错误码 `agents.unknownConfigOption`、`agents.unknownConfigValue`，后端没有接收时为 `agents.backendUnavailable`。`litheFunctions` 0 内新增通知 `agents/didSetConfigOption {session, option, value}`（`agents.native`），后端在 CLI 能接受时应用，再报告一次 `configOptions`；CLI 拒绝时报告未改变的设置和一条 `notice`。fixture `agents/native-session.json` 补充这条通知和一个 `configOptions` 报告，四种官方 SDK 新增会话处理器方法（Rust `set_config_option`、Go `SetConfigOption`、Node `setConfigOption`、Java `setConfigOption`，默认什么都不做），Go SDK 的宿主通知改为统一走 Agent 通知分发。旧 Core 以未知事件拒绝 `configOptions` 报告（`-32602`），插件在旧宿主上应忽略这次拒绝、照常运行。没有新增能力版本、协议版本或宿主方法。
 
 - [#207](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/207)（待合入），[@1lck](https://github.com/1lck)，`debugAdapters` 0（API-30）增加可选 `launch.executableSetting`。命令型适配器可读取用户全局文件路径，留空沿用原命令查找；旧宿主会拒绝包含该声明的清单。无新增方法、通知或能力版本。

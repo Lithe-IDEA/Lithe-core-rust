@@ -8,6 +8,9 @@ use super::*;
 pub(crate) struct Detection {
     /// Exact file names; a directory containing any of them is a candidate.
     pub(crate) markers: Vec<String>,
+    /// Workspace-relative directory rules applied only to this declaration's candidates.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) ignored_paths: Vec<String>,
     #[serde(default)]
     pub(crate) nesting: Nesting,
     /// Decides between plugins declaring the same build-system ID.
@@ -49,6 +52,17 @@ impl BuildSystemDeclaration {
             ));
         }
         detection.markers = sorted_unique(std::mem::take(&mut detection.markers));
+        if !detection.ignored_paths.is_empty() {
+            super::super::ignored_paths::check(&detection.ignored_paths).map_err(|error| {
+                invalid(
+                    format!(
+                        "{field}.detection.{}",
+                        error.field.as_deref().unwrap_or("ignoredPaths")
+                    ),
+                    error.message,
+                )
+            })?;
+        }
         if detection.priority > MAX_PRIORITY {
             return Err(invalid(
                 format!("{field}.detection.priority"),

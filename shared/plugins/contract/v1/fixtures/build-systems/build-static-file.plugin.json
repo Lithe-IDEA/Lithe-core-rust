@@ -22,7 +22,8 @@
       "id": "cargo",
       "displayName": "Cargo",
       "detection": {
-        "markers": ["Cargo.toml"]
+        "markers": ["Cargo.toml"],
+        "ignoredPaths": ["snapshots/"]
       },
       "invocation": {
         "executables": [

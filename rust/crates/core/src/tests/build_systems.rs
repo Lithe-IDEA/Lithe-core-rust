@@ -868,6 +868,69 @@ fn detection_skips_the_ignored_paths_and_by_default_every_dot_directory() {
     assert_eq!(rejected["error"]["field"], "ignoredPaths[1]");
 }
 
+/// A plugin may ignore a parent that contains another system's project. The
+/// workspace can restore that parent without editing either declaration.
+#[test]
+fn detection_applies_plugin_rules_before_nesting_and_reports_their_source() {
+    let workspace = TemporaryWorkspace::new("build-plugin-ignore");
+    workspace
+        .write("snapshots/nested/Cargo.toml", "")
+        .write("snapshots/nested/go.mod", "");
+    let mut manifest = fixture("build-static-file.plugin.json");
+    let detect = |manifest: &Value, paths: Value| {
+        build_detect_command::<Manifest>(json!({
+            "workspaceRoot": workspace.root(),
+            "plugins": [{"manifest": manifest}, {"manifest": fixture("build-command-stdout.plugin.json")}],
+            "ignoredPaths": paths,
+        })).unwrap()["detection"].clone()
+    };
+    let result = detect(&manifest, Value::Null);
+    assert_eq!(instance_ids(&result), ["go:snapshots/nested"]);
+    assert_eq!(
+        result["pluginIgnoredPaths"],
+        json!([{
+            "pluginID": manifest["id"], "buildSystemID": "cargo",
+            "displayName": "Cargo", "patterns": ["snapshots/"]
+        }])
+    );
+    assert_eq!(
+        instance_ids(&detect(&manifest, json!(["!snapshots/"]))),
+        ["cargo:snapshots/nested", "go:snapshots/nested"]
+    );
+    manifest["buildSystems"][0]["detection"]["ignoredPaths"] = json!(["ok", "# comment"]);
+    let rejected = detect(&manifest, Value::Null);
+    assert_eq!(
+        rejected["rejected"][0]["error"]["field"],
+        "buildSystems[0].detection.ignoredPaths[1]"
+    );
+}
+
+/// The manifest preflight counts the encoded bytes of a rule, including negation.
+#[test]
+fn detection_ignore_rule_preflight_validates_syntax_and_utf8_size() {
+    let mut manifest = fixture("build-static-file.plugin.json");
+    let limit = "é".repeat(512);
+    for (rule, valid) in [
+        ("# comment", false),
+        ("!", false),
+        ("! spaced", false),
+        ("!snapshots/", true),
+        (&limit, true),
+        (&format!("!{limit}"), false),
+    ] {
+        manifest["buildSystems"][0]["detection"]["ignoredPaths"] = json!([rule]);
+        let result = validate_command(json!({"manifest": manifest})).unwrap();
+        if valid {
+            assert_eq!(result["status"], "ok", "{result}");
+        } else {
+            assert_eq!(
+                result["error"]["field"], "buildSystems[0].detection.ignoredPaths[0]",
+                "{result}"
+            );
+        }
+    }
+}
+
 #[test]
 fn detection_returns_empty_for_non_directory_and_missing_workspace_roots() {
     let workspace = TemporaryWorkspace::new("build-detect-non-directory");
@@ -888,7 +951,10 @@ fn detection_returns_empty_for_non_directory_and_missing_workspace_roots() {
         assert_eq!(outcome["status"], "ok", "{}: {outcome}", root.display());
         assert_eq!(
             outcome["detection"],
-            json!({"instances": [], "rejected": [], "shadowed": []}),
+            json!({"instances": [], "rejected": [], "shadowed": [], "pluginIgnoredPaths": [{
+                "pluginID": "dev.lithe.fixture.build-static-file", "buildSystemID": "cargo",
+                "displayName": "Cargo", "patterns": ["snapshots/"]
+            }]}),
             "{}",
             root.display(),
         );

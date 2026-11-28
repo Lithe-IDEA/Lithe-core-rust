@@ -3224,6 +3224,23 @@
               "minItems": 1,
               "maxItems": 32
             },
+            "ignoredPaths": {
+              "description": "Workspace-relative .gitignore directory patterns for this build system only. Workspace rules take precedence. Use plugins.declarative.validate before packaging to check glob syntax and the 1024-byte UTF-8 limit. JSON Schema maxLength counts characters.",
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "not": {
+                  "anyOf": [
+                    { "pattern": "^#|^!$" },
+                    { "pattern": "[\\u0000-\\u001f\\u007f-\\u009f]" },
+                    { "pattern": "^!?(?!\\ufeff)\\s|(?!\\ufeff)\\s$" }
+                  ]
+                }
+              }
+            },
             "nesting": {
               "enum": [
                 "separate",

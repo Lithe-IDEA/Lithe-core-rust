@@ -79,6 +79,9 @@ fn is_below(path: &str, ancestor: &str) -> bool {
 fn roots(
     declaration: &BuildSystemDeclaration,
     directories: &[lithe_execution::DirectoryContext],
+    workspace_root: &Path,
+    workspace_rules: &lithe_execution::IgnoredPaths,
+    plugin_rules: Option<&lithe_execution::IgnoredPaths>,
 ) -> Vec<(String, Vec<String>)> {
     let mut candidates: Vec<(String, Vec<String>)> = directories
         .iter()
@@ -90,7 +93,27 @@ fn roots(
                 .filter(|marker| directory.has(marker))
                 .map(|marker| directory.join_relative(marker))
                 .collect();
-            (!markers.is_empty()).then(|| (directory.relative.clone(), markers))
+            if markers.is_empty() {
+                return None;
+            }
+            // A pruned ancestor also excludes its descendants. The shared walk has
+            // already applied workspace and Git rules, so only the plugin can add exclusions.
+            if let Some(plugin_rules) = plugin_rules {
+                let path = workspace_root.join(&directory.relative);
+                if path
+                    .ancestors()
+                    .take_while(|p| *p != workspace_root)
+                    .any(|p| {
+                        workspace_rules
+                            .decides(p)
+                            .or_else(|| plugin_rules.decides(p))
+                            == Some(true)
+                    })
+                {
+                    return None;
+                }
+            }
+            Some((directory.relative.clone(), markers))
         })
         .collect();
     candidates.sort_by(|left, right| left.0.cmp(&right.0));
@@ -251,9 +274,28 @@ pub(crate) fn detect<M: BuildManifest>(request: DetectRequest) -> Validation<Val
     let empty = BTreeMap::new();
     let mut seen = BTreeSet::new();
     let mut instances = Vec::new();
+    let mut plugin_ignored_paths = Vec::new();
     for owner in owners.values() {
+        let patterns = &owner.declaration.detection.ignored_paths;
+        let plugin_rules = if patterns.is_empty() {
+            None
+        } else {
+            plugin_ignored_paths.push(json!({
+                "pluginID": owner.plugin_id,
+                "buildSystemID": owner.declaration.id,
+                "displayName": owner.declaration.display_name,
+                "patterns": patterns,
+            }));
+            Some(ignored_paths::compile(&workspace.path, Some(patterns))?)
+        };
         let stored = request.options.get(&owner.declaration.id).unwrap_or(&empty);
-        for (root, markers) in roots(owner.declaration, &directories) {
+        for (root, markers) in roots(
+            owner.declaration,
+            &directories,
+            &workspace.path,
+            &ignored,
+            plugin_rules.as_ref(),
+        ) {
             if seen.insert((owner.declaration.id.clone(), root.clone())) {
                 let local = request
                     .instance_options
@@ -305,11 +347,15 @@ pub(crate) fn detect<M: BuildManifest>(request: DetectRequest) -> Validation<Val
         }
     }
     shadowed.sort_by_key(|entry| entry.to_string());
-    Ok(json!({
+    let mut detection = json!({
         "instances": instances,
         "rejected": rejected,
         "shadowed": shadowed,
-    }))
+    });
+    if !plugin_ignored_paths.is_empty() {
+        detection["pluginIgnoredPaths"] = json!(plugin_ignored_paths);
+    }
+    Ok(detection)
 }
 
 #[cfg(test)]

@@ -106,7 +106,7 @@ impl IgnoredPaths {
 
     /// Whether the patterns decide about `directory`: `Some(true)` skips it,
     /// `Some(false)` keeps it whatever Git says, `None` leaves it to Git.
-    fn decides(&self, directory: &Path) -> Option<bool> {
+    pub fn decides(&self, directory: &Path) -> Option<bool> {
         match self.matcher.as_ref()?.matched(directory, true) {
             Match::Ignore(_) => Some(true),
             Match::Whitelist(_) => Some(false),
