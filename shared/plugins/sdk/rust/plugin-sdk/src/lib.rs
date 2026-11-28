@@ -50,7 +50,7 @@ mod stdio;
 pub mod toolchains;
 pub mod view;
 
-pub use agents::{AgentSession, AgentSessionHandle, AgentSessionStart, Agents};
+pub use agents::{AgentImage, AgentSession, AgentSessionHandle, AgentSessionStart, Agents};
 pub use backend::{
     Backend, BackendHandle, Caller, Cancellation, Context, Initialize, KeymapImportRequest,
     KeymapSourceFile,

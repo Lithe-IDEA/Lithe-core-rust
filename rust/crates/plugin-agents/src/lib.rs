@@ -177,7 +177,15 @@ pub struct NativeDeclaration {
     /// [`NativeDeclaration::timeout_milliseconds`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_milliseconds: Option<u64>,
+    /// The image types the CLI accepts with a prompt, from
+    /// [`IMAGE_TYPES`]. Empty means the agent takes text only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub image_types: Vec<String>,
 }
+
+/// The image types a prompt may carry. Core reads each image's first bytes
+/// to tell its type, so only types with a fixed signature are listed.
+pub const IMAGE_TYPES: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 impl NativeDeclaration {
     /// How long Core waits for the launch function.
@@ -331,6 +339,15 @@ pub fn validate_declarations(
                     return Err(invalid(
                         format!("{field}.native.timeoutMilliseconds"),
                         "A launch timeout is between 1000 and 120000 milliseconds.",
+                    ));
+                }
+            }
+            let mut types = BTreeSet::new();
+            for kind in &native.image_types {
+                if !IMAGE_TYPES.contains(&kind.as_str()) || !types.insert(kind.as_str()) {
+                    return Err(invalid(
+                        format!("{field}.native.imageTypes"),
+                        "Image types are distinct values of image/png, image/jpeg, image/gif and image/webp.",
                     ));
                 }
             }
@@ -753,6 +770,9 @@ pub fn catalog_entry(plugin_id: &str, agent: &AgentDeclaration) -> Value {
     }
     if let Some(icon) = &agent.icon {
         entry["icon"] = json!(icon);
+    }
+    if let Some(native) = agent.native.as_ref().filter(|n| !n.image_types.is_empty()) {
+        entry["imageTypes"] = json!(native.image_types);
     }
     if let Some(terminal) = &agent.terminal {
         entry["terminalArguments"] = json!(terminal.arguments);

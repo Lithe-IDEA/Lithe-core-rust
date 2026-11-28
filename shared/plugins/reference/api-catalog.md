@@ -184,7 +184,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-25 | `languageServer/didReceiveNotification` | 转发服务器发出、`forwardNotifications` 列出的通知；超过 `limits.notificationBytes` 时只送一次 `truncated: true`，不带 `params` | `languageServer.request` |
 | API-45 | `agents/didStart` | Core 为本插件启动了一个原生会话，带 `session`、`agentID`、`cwd`，续接时带 `resume` | `agents.native` |
 | API-45 | `agents/didOutput` | CLI 标准输出的完整行，按顺序；每条最多 64 行或 4 MiB | `agents.native` |
-| API-45 | `agents/didPrompt` | 用户在会话里发了提示，开始新回合 `turn`，带提示正文 | `agents.native` |
+| API-45 | `agents/didPrompt` | 用户在会话里发了提示，开始新回合 `turn`，带提示正文和 Core 校验过的图片（类型与路径） | `agents.native` |
 | API-45 | `agents/didCancel` | 用户取消了当前回合 | `agents.native` |
 | API-45 | `agents/didDecidePermission` | 用户回答了权限请求，带所选的 `option`；后端照此回复 CLI，自己不做决定 | `agents.native` |
 | API-45 | `agents/didSetConfigOption` | 用户为后端报告的会话设置（模型、推理等级、模式等）选了一个值，带 `option` 和 `value`；后端在 CLI 能接受时应用，再报告一次设置 | `agents.native` |
@@ -404,7 +404,7 @@ Notifications the host sends to a backend (the backend answers none), also prefi
 | API-25 | `languageServer/didReceiveNotification` | Forwards a notification the server sent and `forwardNotifications` lists; past `limits.notificationBytes` it is delivered once with `truncated: true` and without `params` | `languageServer.request` |
 | API-45 | `agents/didStart` | Core started a native session for this plugin, with `session`, `agentID`, `cwd`, and `resume` when it continues one | `agents.native` |
 | API-45 | `agents/didOutput` | Complete lines of the CLI's standard output, in order; at most 64 lines or 4 MiB per notification | `agents.native` |
-| API-45 | `agents/didPrompt` | The user sent a prompt in the session, starting the new turn `turn`, with the prompt text | `agents.native` |
+| API-45 | `agents/didPrompt` | The user sent a prompt in the session, starting the new turn `turn`, with the prompt text and the images Core checked (type and path) | `agents.native` |
 | API-45 | `agents/didCancel` | The user cancelled the active turn | `agents.native` |
 | API-45 | `agents/didDecidePermission` | The user answered a permission request with `option`; the backend relays it to the CLI and decides nothing itself | `agents.native` |
 | API-45 | `agents/didSetConfigOption` | The user picked a value, `value`, for a session setting the backend reported, `option` (a model, reasoning level, mode, and so on); the backend applies it when the CLI can take it and reports the settings again | `agents.native` |

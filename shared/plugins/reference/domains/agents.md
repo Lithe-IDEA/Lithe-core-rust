@@ -9,7 +9,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 清单字段 | `agents[]`：`{id, displayName, icon?, tool, native?, acp?, terminal?, update?, sessionSources?, configuration?}`，每个插件最多 8 个 |
-| 能力版本 | `agents` 0；有 Agent 声明 `native`、`sessionSources` 或带 `read` 的 `configuration` 时还需要 `backend` 0。`configuration` 和 `agents.configuration` 是 `agents` 0 内的补充，不认识它们的 Core 拒绝这样的清单。见[版本对照](../capabilities-and-versions.md#能力版本requires) |
+| 能力版本 | `agents` 0；有 Agent 声明 `native`、`sessionSources` 或带 `read` 的 `configuration` 时还需要 `backend` 0。`configuration`、`agents.configuration` 和 `native.imageTypes` 是 `agents` 0 内的补充，不认识它们的 Core 拒绝这样的清单。见[版本对照](../capabilities-and-versions.md#能力版本requires) |
 | API 编号 | API-45 |
 | 权限 | `agents.run`（有 Agent 就必须声明）；`agents.native`（有 `native`）；`agents.sessions.read`（有 `sessionSources`）；`agents.configuration`（有 `configuration`）；`agents.usage.read`（读用量汇总，需要后端，没有 Agent 的插件也可以声明）。多声明或少声明都会被拒绝 |
 | 激活事件 | 声明了 `native`、`sessionSources` 或带 `read` 的 `configuration` 的 Agent 必须有 `onAgent:<id>`，其他 Agent 不能有 |
@@ -22,7 +22,7 @@
 
 | 形式 | 谁做什么 |
 | --- | --- |
-| `native` | Core 调用后端函数拿到命令行（只能是 `{executable: {kind: "tool", tool}, arguments}`，不能带环境变量），自己启动 CLI；CLI 的标准输出经 `lithe/host/agents/didOutput` 交给后端，后端用 `lithe/host/agents/report` 报告会话事件，用 `lithe/host/agents/write` 写 CLI 的标准输入；后端报告的 `configOptions`（模型、推理等级、模式）由用户在宿主里切换，经 `lithe/host/agents/didSetConfigOption` 交回后端 |
+| `native` | Core 调用后端函数拿到命令行（只能是 `{executable: {kind: "tool", tool}, arguments}`，不能带环境变量），自己启动 CLI；CLI 的标准输出经 `lithe/host/agents/didOutput` 交给后端，后端用 `lithe/host/agents/report` 报告会话事件，用 `lithe/host/agents/write` 写 CLI 的标准输入；后端报告的 `configOptions`（模型、推理等级、模式）由用户在宿主里切换，经 `lithe/host/agents/didSetConfigOption` 交回后端；声明了 `native.imageTypes` 的 Agent 可以收到带图片的提示，Core 检查每张图片的类型和大小后，把 `{mimeType, path}` 经 `lithe/host/agents/didPrompt` 的 `images` 交给后端，后端按 CLI 自己的格式传给它 |
 | `terminal` | 宿主在终端里用声明的参数运行 CLI，用的是 CLI 自己的交互界面 |
 | `acp` | 版本 0 只校验、列入审查和目录，不运行 Agent Client Protocol 客户端；只提供 ACP 的 Agent 应同时声明 `terminal` |
 | `update` | 用户确认命令行后，用声明的参数运行 CLI 的自更新命令 |
@@ -80,7 +80,7 @@ A plugin can connect an agent command-line tool that the user installed and sign
 | Item | Value |
 | --- | --- |
 | Manifest field | `agents[]`: `{id, displayName, icon?, tool, native?, acp?, terminal?, update?, sessionSources?, configuration?}`, at most 8 per plugin |
-| Capability versions | `agents` 0, and also `backend` 0 when an agent declares `native`, `sessionSources` or a `configuration` with `read`. `configuration` and `agents.configuration` were added within `agents` 0; a Core that does not know them refuses such a manifest. See [versions](../capabilities-and-versions.md#capability-versions-requires) |
+| Capability versions | `agents` 0, and also `backend` 0 when an agent declares `native`, `sessionSources` or a `configuration` with `read`. `configuration`, `agents.configuration` and `native.imageTypes` were added within `agents` 0; a Core that does not know them refuses such a manifest. See [versions](../capabilities-and-versions.md#capability-versions-requires) |
 | API IDs | API-45 |
 | Permissions | `agents.run` (required whenever there are agents); `agents.native` (with `native`); `agents.sessions.read` (with `sessionSources`); `agents.configuration` (with `configuration`); `agents.usage.read` (reads usage totals, needs a backend, and may be declared by a plugin without agents). Declaring one too many or one too few is refused |
 | Activation events | An agent that declares `native`, `sessionSources` or a `configuration` with `read` needs `onAgent:<id>`; other agents may not have one |
@@ -93,7 +93,7 @@ A plugin can connect an agent command-line tool that the user installed and sign
 
 | Form | Who does what |
 | --- | --- |
-| `native` | Core calls a backend function for the command line (only `{executable: {kind: "tool", tool}, arguments}`, no environment variables) and starts the CLI itself. The CLI's standard output reaches the backend through `lithe/host/agents/didOutput`; the backend reports session events with `lithe/host/agents/report` and writes the CLI's standard input with `lithe/host/agents/write`. The user switches the `configOptions` the backend reports (model, reasoning level, mode) in the host, and the choice reaches the backend through `lithe/host/agents/didSetConfigOption` |
+| `native` | Core calls a backend function for the command line (only `{executable: {kind: "tool", tool}, arguments}`, no environment variables) and starts the CLI itself. The CLI's standard output reaches the backend through `lithe/host/agents/didOutput`; the backend reports session events with `lithe/host/agents/report` and writes the CLI's standard input with `lithe/host/agents/write`. The user switches the `configOptions` the backend reports (model, reasoning level, mode) in the host, and the choice reaches the backend through `lithe/host/agents/didSetConfigOption`. An agent that declares `native.imageTypes` can take prompts with images: Core checks each image's type and size, then hands `{mimeType, path}` to the backend in the `images` of `lithe/host/agents/didPrompt`, and the backend passes them to the CLI in its own form |
 | `terminal` | The host runs the CLI with the declared arguments in a terminal: the CLI's own interactive interface |
 | `acp` | Version 0 validates it and lists it in the review and the catalog, but runs no Agent Client Protocol client; an agent that offers only ACP should also declare `terminal` |
 | `update` | After the user confirms the command line, runs the CLI's self-update command with the declared arguments |

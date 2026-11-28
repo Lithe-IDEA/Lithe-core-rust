@@ -5,7 +5,7 @@ mod common;
 
 use common::{Host, WAIT};
 use lithe_plugin_sdk::{
-    AgentSession, AgentSessionHandle, AgentSessionStart, Backend, FunctionError,
+    AgentImage, AgentSession, AgentSessionHandle, AgentSessionStart, Backend, FunctionError,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -72,6 +72,20 @@ impl AgentSession for Recorder {
         if text == "fail" {
             return Err(FunctionError::internal("prompt_failed"));
         }
+        Ok(())
+    }
+
+    fn prompt_images(
+        &mut self,
+        turn: u64,
+        text: String,
+        images: Vec<AgentImage>,
+    ) -> Result<(), FunctionError> {
+        let images: Vec<Value> = images
+            .iter()
+            .map(|image| json!({ "mimeType": image.mime_type, "path": image.path }))
+            .collect();
+        self.record(json!(["prompt", turn, text, images]));
         Ok(())
     }
 

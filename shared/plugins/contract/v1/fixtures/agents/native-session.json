@@ -1,5 +1,5 @@
 {
-  "description": "How an official SDK delivers the native-session notifications Core sends (contract README: Native sessions) and the agents host methods it sends. The notifications of one session reach the plugin's handler one at a time, in the order Core sent them, whatever other sessions do; a session's handler starts with didStart and ends with didExit. A test backend fails to start every session whose cwd is /work/broken and fails every prompt whose text is fail; for both the SDK reports turnEnded with reason failed for the turn, so the host does not wait for a turn no handler runs. Notifications of a session the SDK never started are ignored.",
+  "description": "How an official SDK delivers the native-session notifications Core sends (contract README: Native sessions) and the agents host methods it sends. The notifications of one session reach the plugin's handler one at a time, in the order Core sent them, whatever other sessions do; a session's handler starts with didStart and ends with didExit. A prompt with images reaches the handler's image method with each image's mimeType and path, recorded as a fourth element; a prompt without images reaches the plain prompt method. A test backend fails to start every session whose cwd is /work/broken and fails every prompt whose text is fail; for both the SDK reports turnEnded with reason failed for the turn, so the host does not wait for a turn no handler runs. Notifications of a session the SDK never started are ignored.",
   "sessions": {
     "notifications": [
       { "method": "lithe/host/agents/didStart", "params": { "session": "agent-1", "agentID": "example", "cwd": "/work/orders" } },
@@ -11,6 +11,7 @@
       { "method": "lithe/host/agents/didDecidePermission", "params": { "session": "agent-1", "turn": 1, "permission": "permission-1", "option": "allow" } },
       { "method": "lithe/host/agents/didSetConfigOption", "params": { "session": "agent-1", "option": "effort", "value": "high" } },
       { "method": "lithe/host/agents/didCancel", "params": { "session": "agent-1", "turn": 1 } },
+      { "method": "lithe/host/agents/didPrompt", "params": { "session": "agent-1", "turn": 2, "text": "look", "images": [{ "mimeType": "image/png", "path": "/work/orders/shot.png" }] } },
       { "method": "lithe/host/agents/didOutput", "params": { "session": "agent-9", "lines": ["never started"] } },
       { "method": "lithe/host/agents/didExit", "params": { "session": "agent-1", "exitCode": 0 } },
       { "method": "lithe/host/agents/didExit", "params": { "session": "agent-2" } }
@@ -24,6 +25,7 @@
         ["decidePermission", 1, "permission-1", "allow"],
         ["setConfigOption", "effort", "high"],
         ["cancel", 1],
+        ["prompt", 2, "look", [{ "mimeType": "image/png", "path": "/work/orders/shot.png" }]],
         ["exited", 0]
       ],
       "agent-2": [

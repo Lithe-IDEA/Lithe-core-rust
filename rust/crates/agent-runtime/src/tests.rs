@@ -93,7 +93,7 @@ fn manifest() -> Value {
             "id": AGENT,
             "displayName": "Sample Agent",
             "tool": "sample-cli",
-            "native": { "function": "agent.launch" },
+            "native": { "function": "agent.launch", "imageTypes": ["image/png", "image/jpeg"] },
             "terminal": { "arguments": [] },
             "update": { "arguments": ["update"] },
             "sessionSources": [{
@@ -1077,6 +1077,91 @@ fn a_prompt_the_backend_does_not_take_ends_its_turn() {
             json!({ "session": session, "text": "Hello" })
         ),
         json!({ "turn": 2 })
+    );
+}
+
+#[test]
+fn a_prompt_carries_checked_images_by_path() {
+    let harness = Harness::new("prompt-images", ALL_GRANTS);
+    let session = harness.start();
+    let write = |name: &str, bytes: &[u8]| {
+        let path = harness.dir.path().join(name);
+        fs::write(&path, bytes).expect("write an image");
+        path_text(&path)
+    };
+    let png = write("shot.png", b"\x89PNG\r\n\x1a\nrest");
+    let jpeg = write("photo.jpg", &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10]);
+    let gif = write("loop.gif", b"GIF89a....");
+    let text = write("notes.png", b"plain text");
+    let empty = write("empty.png", b"");
+    let prompt = |text: &str, images: Vec<&String>| {
+        let images: Vec<Value> = images
+            .into_iter()
+            .map(|path| json!({ "path": path }))
+            .collect();
+        json!({ "session": session, "text": text, "images": images })
+    };
+
+    // The image's bytes decide its type, not its name; the agent takes only
+    // what it declared.
+    for (images, code) in [
+        (vec![&text], "agents.invalidImage"),
+        (vec![&empty], "agents.invalidImage"),
+        (vec![&gif], "agents.imageTypeUnsupported"),
+    ] {
+        assert_eq!(
+            harness.refused("agents.prompt", prompt("Look", images)),
+            code
+        );
+    }
+    let relative =
+        json!({ "session": session, "text": "Look", "images": [{ "path": "shot.png" }] });
+    assert_eq!(
+        harness.refused("agents.prompt", relative),
+        "agents.invalidImage"
+    );
+    let missing = harness.dir.path().join("missing.png");
+    let missing = path_text(&missing);
+    assert_eq!(
+        harness.refused("agents.prompt", prompt("Look", vec![&missing])),
+        "agents.invalidImage"
+    );
+    assert_eq!(
+        harness.refused("agents.prompt", prompt("Look", vec![&png; 9])),
+        "agents.tooManyImages"
+    );
+    let large = harness.dir.path().join("large.png");
+    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+    bytes.resize(6 * 1024 * 1024, 0);
+    fs::write(&large, bytes).expect("write a large image");
+    let large = path_text(&large);
+    assert_eq!(
+        harness.refused("agents.prompt", prompt("Look", vec![&large, &large])),
+        "agents.imagesTooLarge"
+    );
+    assert_eq!(
+        harness.refused("agents.prompt", prompt(" ", vec![])),
+        "agents.invalidPrompt"
+    );
+    // No refusal started a turn.
+    assert!(harness.sessions()[0].get("activeTurn").is_none());
+
+    // Images may go without text; the backend gets each type and path.
+    assert_eq!(
+        harness.run("agents.prompt", prompt("", vec![&png, &jpeg])),
+        json!({ "turn": 1 })
+    );
+    assert_eq!(
+        harness.link.await_notice(AGENTS_DID_PROMPT, |_| true),
+        json!({
+            "session": session,
+            "turn": 1,
+            "text": "",
+            "images": [
+                { "mimeType": "image/png", "path": png },
+                { "mimeType": "image/jpeg", "path": jpeg }
+            ]
+        })
     );
 }
 

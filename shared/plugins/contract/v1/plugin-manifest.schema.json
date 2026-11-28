@@ -412,6 +412,19 @@
               "minimum": 1000,
               "maximum": 120000,
               "default": 15000
+            },
+            "imageTypes": {
+              "description": "The image types the CLI takes with a prompt. Without it the agent takes text only.",
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "image/png",
+                  "image/jpeg",
+                  "image/gif",
+                  "image/webp"
+                ]
+              }
             }
           }
         },

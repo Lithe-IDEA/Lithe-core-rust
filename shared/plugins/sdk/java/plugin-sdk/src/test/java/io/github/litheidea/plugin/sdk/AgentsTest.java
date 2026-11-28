@@ -93,6 +93,18 @@ class AgentsTest {
                     }
 
                     @Override
+                    public void promptImages(long turn, String text, List<AgentImage> images) {
+                        List<Object> shown = new ArrayList<>();
+                        for (AgentImage image : images) {
+                            Map<String, Object> entry = new LinkedHashMap<>();
+                            entry.put("mimeType", image.mimeType());
+                            entry.put("path", image.path());
+                            shown.add(entry);
+                        }
+                        record(id, "prompt", turn, text, shown);
+                    }
+
+                    @Override
                     public void cancel(long turn) {
                         record(id, "cancel", turn);
                     }

@@ -36,6 +36,17 @@ pub struct AgentSessionStart {
     pub resume: Option<String>,
 }
 
+/// One image of a prompt: the type Core read from the file's first bytes
+/// and the file's absolute path. The file may be gone by the time the
+/// backend reads it, so bound what you read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentImage {
+    /// `image/png`, `image/jpeg`, `image/gif` or `image/webp`.
+    pub mime_type: String,
+    /// The absolute path of the image file.
+    pub path: String,
+}
+
 /// The plugin's translation of one native session. Every method runs on
 /// the session's own thread, one at a time and in the order Core sent the
 /// notifications, so a method may block on host requests.
@@ -47,6 +58,17 @@ pub trait AgentSession: Send {
     fn output(&mut self, lines: Vec<String>) -> Result<(), FunctionError>;
     /// The user's prompt for `turn`; write what the CLI expects.
     fn prompt(&mut self, turn: u64, text: String) -> Result<(), FunctionError>;
+    /// The user's prompt for `turn` with images, sent only to an agent whose
+    /// manifest declares `native.imageTypes`; `text` may be empty. Hand each
+    /// image to the CLI in its own form. Fails the turn unless overridden.
+    fn prompt_images(
+        &mut self,
+        _turn: u64,
+        _text: String,
+        _images: Vec<AgentImage>,
+    ) -> Result<(), FunctionError> {
+        Err(FunctionError::internal("agent_images_unsupported"))
+    }
     /// The user cancelled `turn`.
     fn cancel(&mut self, _turn: u64) -> Result<(), FunctionError> {
         Ok(())
@@ -149,7 +171,7 @@ pub(crate) type AgentFactory = Arc<
 /// One notification for a session's worker.
 enum Notice {
     Output(Vec<String>),
-    Prompt(u64, String),
+    Prompt(u64, String, Vec<AgentImage>),
     Cancel(u64),
     Decide(u64, String, String),
     Configure(String, String),
@@ -221,9 +243,22 @@ impl AgentWorkers {
                     .map(|lines| lines.iter().map(text).collect())
                     .unwrap_or_default(),
             ),
-            methods::AGENTS_DID_PROMPT => {
-                Notice::Prompt(turn(&params["turn"]), text(&params["text"]))
-            }
+            methods::AGENTS_DID_PROMPT => Notice::Prompt(
+                turn(&params["turn"]),
+                text(&params["text"]),
+                params["images"]
+                    .as_array()
+                    .map(|images| {
+                        images
+                            .iter()
+                            .map(|image| AgentImage {
+                                mime_type: text(&image["mimeType"]),
+                                path: text(&image["path"]),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            ),
             methods::AGENTS_DID_CANCEL => Notice::Cancel(turn(&params["turn"])),
             methods::AGENTS_DID_DECIDE_PERMISSION => Notice::Decide(
                 turn(&params["turn"]),
@@ -278,7 +313,7 @@ fn run(
     };
     while let Ok(notice) = receiver.recv() {
         let prompt = match &notice {
-            Notice::Prompt(turn, _) => Some(*turn),
+            Notice::Prompt(turn, ..) => Some(*turn),
             _ => None,
         };
         let exit = matches!(notice, Notice::Exit(_));
@@ -313,7 +348,8 @@ fn run(
 fn deliver(handler: &mut dyn AgentSession, notice: Notice) -> Result<(), FunctionError> {
     match notice {
         Notice::Output(lines) => handler.output(lines),
-        Notice::Prompt(turn, text) => handler.prompt(turn, text),
+        Notice::Prompt(turn, text, images) if images.is_empty() => handler.prompt(turn, text),
+        Notice::Prompt(turn, text, images) => handler.prompt_images(turn, text, images),
         Notice::Cancel(turn) => handler.cancel(turn),
         Notice::Decide(turn, permission, option) => {
             handler.decide_permission(turn, permission, option)

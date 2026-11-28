@@ -3718,7 +3718,7 @@ rejections.
 | `displayName` | 1–64 characters without leading or trailing spaces or control characters. |
 | `icon` | Optional [UI icon](#ui-icons). |
 | `tool` | One of the plugin's `requiresTools`: the only executable any form of the agent runs. The host discovers it and probes its version like any other tool, so a session always runs the CLI the user installed, never a path the plugin chooses. |
-| `native` | `{function, timeoutMilliseconds?}`: a [native session](#native-sessions). `function` is a backend function that answers the command line; Core waits `timeoutMilliseconds` (1000–120000, default 15000) for it. |
+| `native` | `{function, timeoutMilliseconds?, imageTypes?}`: a [native session](#native-sessions). `function` is a backend function that answers the command line; Core waits `timeoutMilliseconds` (1000–120000, default 15000) for it. `imageTypes` lists the image types the CLI takes with a prompt, distinct values of `image/png`, `image/jpeg`, `image/gif` and `image/webp`; an agent without it takes text only. |
 | `acp` | `{arguments}`: runs `tool` with these arguments as an Agent Client Protocol server. See [Limits of version 0](#limits-of-version-0). |
 | `terminal` | `{arguments}`: runs `tool` with these arguments in a host terminal, the CLI's own interactive interface. |
 | `update` | `{arguments}`, nonempty: runs `tool` with these arguments to update the CLI, after the user confirms. A CLI without a self-update command declares none. |
@@ -3779,9 +3779,10 @@ validates each manifest itself, keeps the grants the manifest declares, and
 answers `{agents, rejected: [{pluginID, code, message}]}`. `agents.catalog`
 answers `{agents}` again. Each entry is `{pluginID, agentID, displayName,
 tool, modes, forms, readsSessions, mayRun, mayReadSessions, icon?,
-terminalArguments?, update?, sessionRootVariables?, configuration?,
-mayConfigure?}`: `modes` lists `native` and `acp`, `forms` lists
-`conversation` and `terminal`, and `sessionRootVariables` names the
+imageTypes?, terminalArguments?, update?, sessionRootVariables?,
+configuration?, mayConfigure?}`: `modes` lists `native` and `acp`, `forms`
+lists `conversation` and `terminal`, `imageTypes` is the native
+declaration's list when it has one, and `sessionRootVariables` names the
 environment variables the session and configuration roots read. An agent
 that declares `configuration` gives `configuration: {instructions, skills,
 files, editable}`, which of them it declares and whether it declares `edit`,
@@ -3790,7 +3791,7 @@ and `mayConfigure`, whether its plugin is granted `agents.configuration`.
 | Command | Payload | Result |
 | --- | --- | --- |
 | `agents.start` | `{pluginID, agentID, cwd, toolPath, rootURI?, resume?, workspaceTrusted, environment}` | `{session, mode: "native"}` |
-| `agents.prompt` | `{session, text}` | `{turn}` |
+| `agents.prompt` | `{session, text, images?}` | `{turn}` |
 | `agents.cancel` | `{session}` | `{turn}` |
 | `agents.respondPermission` | `{session, permission, option}` | `{turn}` |
 | `agents.setConfigOption` | `{session, option, value}` | `{}` |
@@ -3818,8 +3819,18 @@ and `mayConfigure`, whether its plugin is granted `agents.configuration`.
   takes an executable from the plugin. `environment` is the environment the
   host gives tools (at most 256 variables; a name is 1–256 bytes without `=`
   or NUL, a value at most 32 KiB without NUL). The backend cannot add to it.
-- `agents.prompt` takes 1 byte to 1 MiB of text and refuses a second turn
-  while one runs (`agents.invalidPrompt`, `agents.turnInProgress`);
+- `agents.prompt` takes at most 1 MiB of text, which may be empty only
+  when the prompt carries images (`agents.invalidPrompt`), and refuses a
+  second turn while one runs (`agents.turnInProgress`). `images` is at most
+  eight `{path}` (`agents.tooManyImages`), each an absolute path to a
+  nonempty regular file the user picked; Core reads its first bytes to tell
+  the type, never trusting the file name, and refuses a file it cannot read
+  or whose bytes are not PNG, JPEG, GIF or WebP (`agents.invalidImage`), a
+  type the agent's `imageTypes` does not list (`agents.imageTypeUnsupported`)
+  and images of more than 10 MiB together (`agents.imagesTooLarge`). A
+  refused prompt starts no turn. Image paths never reach logs or refusals.
+  The host keeps a pasted image in its cache directory, never in the
+  application package, and passes that path;
   `agents.cancel` refuses when no turn runs (`agents.noTurnInProgress`);
   `agents.respondPermission` refuses a request that is not pending or an
   option it does not offer (`agents.permissionNotPending`,
@@ -3876,7 +3887,7 @@ Notifications Core sends (the host may not send them):
 | --- | --- |
 | `lithe/host/agents/didStart` | `{session, agentID, cwd, resume?}` |
 | `lithe/host/agents/didOutput` | `{session, lines}` |
-| `lithe/host/agents/didPrompt` | `{session, turn, text}` |
+| `lithe/host/agents/didPrompt` | `{session, turn, text, images?}` |
 | `lithe/host/agents/didCancel` | `{session, turn}` |
 | `lithe/host/agents/didDecidePermission` | `{session, turn, permission, option}` |
 | `lithe/host/agents/didSetConfigOption` | `{session, option, value}` |
@@ -3886,6 +3897,12 @@ Notifications Core sends (the host may not send them):
   A line longer than 16 MiB is dropped and the host receives the event
   `outputLineDropped`; a notification the backend does not take ends the
   session as failed.
+- `didPrompt` carries `images: [{mimeType, path}]`, in the user's order,
+  only when the prompt has images; `mimeType` is the type Core read from
+  the file. The backend hands each image to the CLI in the CLI's own form,
+  by path when the CLI reads files itself, or by reading the file. The file
+  may change after Core checked it, so a backend that reads it still bounds
+  what it reads and fails the turn when the file is gone.
 - `didSetConfigOption` carries a setting and value the backend last
   reported. The backend applies it when the CLI can take it, which may be
   the next turn, and reports `configOptions` again with the new current

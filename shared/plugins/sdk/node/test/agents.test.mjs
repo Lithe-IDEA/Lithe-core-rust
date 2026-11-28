@@ -41,6 +41,9 @@ function recordingBackend() {
         record('prompt', turn, text);
         if (text === 'fail') throw new Error('prompt_failed');
       },
+      promptImages(turn, text, images) {
+        record('prompt', turn, text, images);
+      },
       cancel(turn) {
         record('cancel', turn);
       },

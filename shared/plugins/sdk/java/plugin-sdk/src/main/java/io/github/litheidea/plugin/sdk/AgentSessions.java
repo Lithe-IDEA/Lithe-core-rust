@@ -146,7 +146,11 @@ final class AgentSessions {
                 handler.output(notice.lines);
                 return;
             case Protocol.HOST_AGENTS_DID_PROMPT:
-                handler.prompt(notice.turn, notice.text);
+                if (notice.images.isEmpty()) {
+                    handler.prompt(notice.turn, notice.text);
+                } else {
+                    handler.promptImages(notice.turn, notice.text, notice.images);
+                }
                 return;
             case Protocol.HOST_AGENTS_DID_CANCEL:
                 handler.cancel(notice.turn);
@@ -192,12 +196,23 @@ final class AgentSessions {
                 lines.add(line instanceof String ? (String) line : "");
             }
         }
+        List<AgentImage> images = new ArrayList<>();
+        Object rawImages = params.get("images");
+        if (rawImages instanceof List) {
+            for (Object image : (List<?>) rawImages) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> fields = image instanceof Map
+                        ? (Map<String, Object>) image
+                        : Collections.<String, Object>emptyMap();
+                images.add(new AgentImage(string(fields, "mimeType"), string(fields, "path")));
+            }
+        }
         Object turn = params.get("turn");
         Object exit = params.get("exitCode");
         return new Notice(method, Collections.unmodifiableList(lines),
                 turn instanceof Long && (Long) turn >= 0 ? (Long) turn : 0L,
-                string(params, "text"), string(params, "permission"), string(params, "option"),
-                string(params, "value"), exit instanceof Long ? (Long) exit : null);
+                string(params, "text"), Collections.unmodifiableList(images), string(params, "permission"),
+                string(params, "option"), string(params, "value"), exit instanceof Long ? (Long) exit : null);
     }
 
     private static String string(Map<String, Object> params, String key) {
@@ -207,23 +222,26 @@ final class AgentSessions {
 
     /** One notification for a session's worker. */
     private static final class Notice {
-        static final Notice CLOSED = new Notice("", Collections.<String>emptyList(), 0, "", "", "", "", null);
+        static final Notice CLOSED = new Notice("", Collections.<String>emptyList(), 0, "",
+                Collections.<AgentImage>emptyList(), "", "", "", null);
 
         final String method;
         final List<String> lines;
         final long turn;
         final String text;
+        final List<AgentImage> images;
         final String permission;
         final String option;
         final String value;
         final Long exitCode;
 
-        Notice(String method, List<String> lines, long turn, String text, String permission, String option,
-                String value, Long exitCode) {
+        Notice(String method, List<String> lines, long turn, String text, List<AgentImage> images,
+                String permission, String option, String value, Long exitCode) {
             this.method = method;
             this.lines = lines;
             this.turn = turn;
             this.text = text;
+            this.images = images;
             this.permission = permission;
             this.option = option;
             this.value = value;
