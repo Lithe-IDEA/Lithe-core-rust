@@ -126,6 +126,7 @@ export const AGENT_NOTIFICATIONS = Object.freeze({
   didPrompt: 'lithe/host/agents/didPrompt',
   didCancel: 'lithe/host/agents/didCancel',
   didDecidePermission: 'lithe/host/agents/didDecidePermission',
+  didSetConfigOption: 'lithe/host/agents/didSetConfigOption',
   didExit: 'lithe/host/agents/didExit',
 });
 

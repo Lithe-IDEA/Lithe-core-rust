@@ -2,8 +2,9 @@
 //!
 //! Core starts an agent's CLI and relays it through the plugin backend: the
 //! CLI's standard output arrives as `lithe/host/agents/didOutput`, the user's
-//! prompts, cancellations and permission decisions as `didPrompt`,
-//! `didCancel` and `didDecidePermission`, and the backend answers with
+//! prompts, cancellations, permission decisions and setting changes as
+//! `didPrompt`, `didCancel`, `didDecidePermission` and `didSetConfigOption`,
+//! and the backend answers with
 //! `lithe/host/agents/write` (the CLI's standard input) and
 //! `lithe/host/agents/report` (session events). A translation is only right
 //! when it sees the CLI's lines in order, so the SDK gives every session one
@@ -57,6 +58,12 @@ pub trait AgentSession: Send {
         permission: String,
         option: String,
     ) -> Result<(), FunctionError>;
+    /// The user picked `value` for the session setting `option`, one the
+    /// backend reported in a `configOptions` event. Apply it when the CLI can
+    /// take it and report the settings again. Does nothing unless overridden.
+    fn set_config_option(&mut self, _option: String, _value: String) -> Result<(), FunctionError> {
+        Ok(())
+    }
     /// The CLI ended; the session gets no further calls.
     fn exited(&mut self, _exit_code: Option<i64>) {}
 }
@@ -145,6 +152,7 @@ enum Notice {
     Prompt(u64, String),
     Cancel(u64),
     Decide(u64, String, String),
+    Configure(String, String),
     Exit(Option<i64>),
 }
 
@@ -163,6 +171,7 @@ pub(crate) fn is_agent_notification(method: &str) -> bool {
         methods::AGENTS_DID_PROMPT,
         methods::AGENTS_DID_CANCEL,
         methods::AGENTS_DID_DECIDE_PERMISSION,
+        methods::AGENTS_DID_SET_CONFIG_OPTION,
         methods::AGENTS_DID_EXIT,
     ]
     .contains(&method)
@@ -221,6 +230,9 @@ impl AgentWorkers {
                 text(&params["permission"]),
                 text(&params["option"]),
             ),
+            methods::AGENTS_DID_SET_CONFIG_OPTION => {
+                Notice::Configure(text(&params["option"]), text(&params["value"]))
+            }
             _ => Notice::Exit(params["exitCode"].as_i64()),
         };
         let exit = matches!(notice, Notice::Exit(_));
@@ -306,6 +318,7 @@ fn deliver(handler: &mut dyn AgentSession, notice: Notice) -> Result<(), Functio
         Notice::Decide(turn, permission, option) => {
             handler.decide_permission(turn, permission, option)
         }
+        Notice::Configure(option, value) => handler.set_config_option(option, value),
         Notice::Exit(code) => {
             handler.exited(code);
             Ok(())

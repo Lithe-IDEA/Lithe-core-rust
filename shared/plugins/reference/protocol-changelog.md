@@ -16,7 +16,7 @@
 
 - [#218](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/218)（待合入），[@WhiteZeek](https://github.com/WhiteZeek)，`buildSystems` 0 新增可选的 `detection.ignoredPaths`。规则只过滤当前构建系统的候选目录。工作区规则优先。旧宿主拒绝包含新字段的清单。
 
-- [#219](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/219)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`agents` 0 内补充（API-45）：宿主命令 `agentSessions.list` 新增 `cwdUnder`（最多 64 个目录，会话的 `cwd` 是其中之一或在它下面才保留，末尾的 `/`、`\` 不影响匹配，没有 `cwd` 的会话不在任何目录下）、`order`（`updated` 最近活动在前，默认；`started` 最近开始在前）和 `counts`；`counts: true` 时回答多出 `total`（不受 `offset`、`limit` 影响）、`groups`（每个目录 `{cwd?, count, updatedAtMs?}`，最近活动在前，最多 500 组）和 `groupsTruncated`。每个会话多出 `messageCount`（插件后端在会话自己文件里报的可搜索片段数，子代理文件不计）、`lastMessageRange`（最后一个片段的范围，用 `agentSessions.read` 读出该条消息，Core 不缓存正文）、`subagentCount`（调用里不同 `threadID` 的个数）和 `model`（最近一次主线程调用的 `model`，没有时用 `requestedModel`；全部调用都带 `threadID` 时取最近一次调用的）。旧 Core 以未知字段拒绝三个新参数，也不回答四个新字段，宿主应显示不带它们的列表。没有新增宿主方法、通知、错误码或能力版本。
+- [#220](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/220)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`agents` 0 内补充（API-45）：原生会话可以报告用户可改的会话设置，用户在宿主里切换模型、推理等级或模式。会话事件新增 `configOptions`（对应 ACP 的 session config options，ACP 的 `thought_level` 写作 `thoughtLevel`）：最多 16 个 `{id, name, description?, category?, currentValue, options}`，`category` 为 `model`、`thoughtLevel`、`mode` 之一，`options` 为 1–128 个 `{value, name, description?}`；设置 ID 唯一、同一设置的值唯一、`currentValue` 必须在 `options` 里，`thoughtLevel` 的值从低到高排列；每次报告替换上一次，空列表撤回全部设置；这个事件不属于任何回合，随时可以报告。新增宿主命令 `agents.setConfigOption {session, option, value}` → `{}`：只接受用户发起的请求（`agents.userActionRequired`），回合进行中也可以调用；设置或值不在后端最近一次报告里时分别拒绝为新错误码 `agents.unknownConfigOption`、`agents.unknownConfigValue`，后端没有接收时为 `agents.backendUnavailable`。`litheFunctions` 0 内新增通知 `agents/didSetConfigOption {session, option, value}`（`agents.native`），后端在 CLI 能接受时应用，再报告一次 `configOptions`；CLI 拒绝时报告未改变的设置和一条 `notice`。fixture `agents/native-session.json` 补充这条通知和一个 `configOptions` 报告，四种官方 SDK 新增会话处理器方法（Rust `set_config_option`、Go `SetConfigOption`、Node `setConfigOption`、Java `setConfigOption`，默认什么都不做），Go SDK 的宿主通知改为统一走 Agent 通知分发。旧 Core 以未知事件拒绝 `configOptions` 报告（`-32602`），插件在旧宿主上应忽略这次拒绝、照常运行。没有新增能力版本、协议版本或宿主方法。
 
 - [#207](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/207)（待合入），[@1lck](https://github.com/1lck)，`debugAdapters` 0（API-30）增加可选 `launch.executableSetting`。命令型适配器可读取用户全局文件路径，留空沿用原命令查找；旧宿主会拒绝包含该声明的清单。无新增方法、通知或能力版本。
 
@@ -226,6 +226,7 @@
 | API-40 | `workspace/getHostPaths` | 0 | 待合入 | [#151](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/151) |
 | API-45 | `agents/write` | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | API-45 | `agents/report` | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/report` | 0（事件新增 `configOptions`） | 待合入 | [#220](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/220) |
 | API-45 | `agents/usage` | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | API-45 | `agents/usage` | 0（回答新增 `speeds`） | 2026-11-28 | [#217](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/217) |
 | API-45 | `agents/didStart`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
@@ -233,6 +234,7 @@
 | API-45 | `agents/didPrompt`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | API-45 | `agents/didCancel`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | API-45 | `agents/didDecidePermission`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didSetConfigOption`（通知） | 0 | 待合入 | [#220](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/220) |
 | API-45 | `agents/didExit`（通知） | 0 | 2026-11-27 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | — | `keymapImport/listInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | — | `keymapImport/readChunk` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -243,6 +245,7 @@
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改动 |
 | --- | --- | --- | --- | --- |
+| [#219](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/219) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-45 | `agents` 0 | 宿主命令 `agentSessions.list` 新增 `cwdUnder`（最多 64 个目录，会话的 `cwd` 是其中之一或在它下面才保留，末尾的 `/`、`\` 不影响匹配，没有 `cwd` 的会话不在任何目录下）、`order`（`updated` 最近活动在前，默认；`started` 最近开始在前）和 `counts`；`counts: true` 时回答多出 `total`（不受 `offset`、`limit` 影响）、`groups`（每个目录 `{cwd?, count, updatedAtMs?}`，最近活动在前，最多 500 组）和 `groupsTruncated`。每个会话多出 `messageCount`（插件后端在会话自己文件里报的可搜索片段数，子代理文件不计）、`lastMessageRange`（最后一个片段的范围，用 `agentSessions.read` 读出该条消息，Core 不缓存正文）、`subagentCount`（调用里不同 `threadID` 的个数）和 `model`（最近一次主线程调用的 `model`，没有时用 `requestedModel`；全部调用都带 `threadID` 时取最近一次调用的）。旧 Core 以未知字段拒绝三个新参数，也不回答四个新字段，宿主应显示不带它们的列表。没有新增宿主方法、通知、错误码或能力版本。 |
 | [#217](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/217) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-45、API-23 | `agents` 0 / `commandInstallers` 0 | `agents/usage` 与 `agentSessions.stats` 的回答新增 `speeds`，按模型列出同一批调用首个令牌之后输出速度的中位数（`{model, calls, medianTokensPerSecond, lowerBound}`，最快的在前），四种官方 SDK 的说明同步。旧宿主不返回该字段，插件应按缺失处理。契约同时写明 `scan` 的一个既有行为：之后的扫描可以用同一个 `key` 再报一次调用（`range` 在它自己的块里），后报的替换先报的，所以到一轮结束才知道计时的后端可以那时补上 `firstTokenMs` 和 `durationMs`；自 #199 起的 Core 都这样处理。同一 PR 里，会话记录的读取支持分页：`agentSessions.list` 可按 `sessionID` 查找、每个会话带 `readBytes`，`agentSessions.read` 回答 `end`（下一页的起点）；读取范围在行中间结束时，Core 只把完整的行交给插件后端的 `read`，并说明后端 `messages` 回答整体不能超过 1 MiB 的函数结果上限。旧 Core 不认 `sessionID`、不回答 `readBytes` 和 `end`，并可能把被截断的行交给后端，后端应跳过不是完整 JSON 的行。同一 PR 里，`commandInstallers` 0 内补充（API-23）：[命令安装](../contract/v1/README.md#command-installers)也服务 Agent 的命令行工具：安装声明的 `commands` 可以由本插件某个 Agent 的 `tool` 所指工具定义的 `commands` 提供，`plugins.commandInstallers.requirements` 在 `systemCommand` 启动之后按声明顺序列出 `kind: "agent"`、`id` 为 Agent ID 的使用方；宿主把插件的受管命令目录和记录的默认目录也用于解析 Agent 工具的 `kind: "command"` 候选（先查 `PATH`）。旧 Core 以 `plugin.manifest.invalid`（`commandInstallers[].commands[]`）拒绝只有 Agent 工具用到的安装声明；需要它的插件同时要求 `agents` 0。同一 PR 里，[IDE 连接](../../../rust/contracts/ide-api/v1.md#agent-sessions)新增两个只读 MCP 工具 `lithe_sessions_search`、`lithe_sessions_read`（API-45），让 MCP 客户端搜索和分页读取用户同意读取的 Agent 会话；宿主只在用户打开 IDE 连接、打开“允许 MCP 客户端搜索本地会话”并同意读取至少一个 Agent 的会话时声明它们，没有声明工具清单的宿主不提供这两个工具。它们是 IDE 连接的工具，不是插件宿主方法。没有新增宿主方法、通知或错误码。 |
 
 ### 2026-11-27

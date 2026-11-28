@@ -310,11 +310,12 @@ class Backend {
    * Translates the native sessions of the plugin's agents (plan API-45). For
    * each `lithe/host/agents/didStart`, `start({ session, agentID, cwd,
    * resume }, handle)` makes the session's handler, which then gets the
-   * session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`
-   * and `didExit` one at a time, in the order Core sent them: each call
-   * waits for the promise of the one before. The handler has
+   * session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`,
+   * `didSetConfigOption` and `didExit` one at a time, in the order Core sent
+   * them: each call waits for the promise of the one before. The handler has
    * `output(lines)`, `prompt(turn, text)` and `decidePermission(turn,
-   * permission, option)`, and may have `cancel(turn)` and `exited(exitCode)`.
+   * permission, option)`, and may have `cancel(turn)`,
+   * `setConfigOption(option, value)` and `exited(exitCode)`.
    * `handle` has `id`, `host`, `write(lines)` and `report(events)`. When
    * `start` fails, or a prompt fails, the SDK reports `turnEnded` with reason
    * `failed` for the turn. A later registration replaces the earlier one.
@@ -1130,6 +1131,8 @@ async function deliverAgentNotification(handler, method, params, turn) {
       return handler.cancel?.(turn);
     case AGENT_NOTIFICATIONS.didDecidePermission:
       return handler.decidePermission(turn, text(params.permission), text(params.option));
+    case AGENT_NOTIFICATIONS.didSetConfigOption:
+      return handler.setConfigOption?.(text(params.option), text(params.value));
     default:
       return handler.exited?.(Number.isSafeInteger(params.exitCode) ? params.exitCode : null);
   }

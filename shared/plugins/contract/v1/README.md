@@ -3780,14 +3780,15 @@ terminalArguments?, update?, sessionRootVariables?}`: `modes` lists
 | `agents.prompt` | `{session, text}` | `{turn}` |
 | `agents.cancel` | `{session}` | `{turn}` |
 | `agents.respondPermission` | `{session, permission, option}` | `{turn}` |
+| `agents.setConfigOption` | `{session, option, value}` | `{}` |
 | `agents.close` | `{session}` | `{}` |
 | `agents.sessions` | `{}` | `{sessions}`: the live sessions |
 | `agents.waitEvents` | `{after?, timeoutMilliseconds?, limit?}` | `{events: [{sequence, session, event}], next, missed}` |
 
-- `agents.start`, `agents.prompt` and `agents.respondPermission` run only
-  for a request whose origin is the user (`agents.userActionRequired`): a
-  plugin cannot start a session, send a prompt or answer a permission
-  request.
+- `agents.start`, `agents.prompt`, `agents.respondPermission` and
+  `agents.setConfigOption` run only for a request whose origin is the user
+  (`agents.userActionRequired`): a plugin cannot start a session, send a
+  prompt, answer a permission request or change a session setting.
 - `agents.start` refuses, in this order: a request not from the user; a
   remote workspace (`agents.remoteWorkspace`); an untrusted one
   (`agents.untrustedWorkspace`); an agent no configured plugin declares
@@ -3809,9 +3810,12 @@ terminalArguments?, update?, sessionRootVariables?}`: `modes` lists
   `agents.cancel` refuses when no turn runs (`agents.noTurnInProgress`);
   `agents.respondPermission` refuses a request that is not pending or an
   option it does not offer (`agents.permissionNotPending`,
-  `agents.unknownPermissionOption`). A prompt, cancel or answer the backend
-  does not take is `agents.backendUnavailable`. An unknown session is
-  `agents.unknownSession`.
+  `agents.unknownPermissionOption`). `agents.setConfigOption` picks a value
+  of a setting the backend last reported with `configOptions`, also while a
+  turn runs; it refuses a setting the backend did not report or a value it
+  does not list (`agents.unknownConfigOption`, `agents.unknownConfigValue`).
+  A prompt, cancel, answer or setting the backend does not take is
+  `agents.backendUnavailable`. An unknown session is `agents.unknownSession`.
 - `agents.close` closes the CLI's standard input and ends the process after
   three seconds.
 - `agents.waitEvents` waits at most `timeoutMilliseconds` (default 0, at
@@ -3848,9 +3852,10 @@ plugin backend only translates between the CLI's lines and Lithe's events:
    `didOutput`; the backend translates them and reports events with
    `lithe/host/agents/report`. It writes to the CLI's standard input with
    `lithe/host/agents/write`.
-4. A prompt, cancel or permission decision of the user reaches the backend
-   as `didPrompt`, `didCancel` or `didDecidePermission`; the backend writes
-   what the CLI expects. `didExit` follows the end of the process.
+4. A prompt, cancel, permission decision or setting change of the user
+   reaches the backend as `didPrompt`, `didCancel`, `didDecidePermission` or
+   `didSetConfigOption`; the backend writes what the CLI expects. `didExit`
+   follows the end of the process.
 
 Notifications Core sends (the host may not send them):
 
@@ -3861,12 +3866,18 @@ Notifications Core sends (the host may not send them):
 | `lithe/host/agents/didPrompt` | `{session, turn, text}` |
 | `lithe/host/agents/didCancel` | `{session, turn}` |
 | `lithe/host/agents/didDecidePermission` | `{session, turn, permission, option}` |
+| `lithe/host/agents/didSetConfigOption` | `{session, option, value}` |
 | `lithe/host/agents/didExit` | `{session, exitCode?}` |
 
 - `didOutput` carries at most 64 lines or 4 MiB per notification, in order.
   A line longer than 16 MiB is dropped and the host receives the event
   `outputLineDropped`; a notification the backend does not take ends the
   session as failed.
+- `didSetConfigOption` carries a setting and value the backend last
+  reported. The backend applies it when the CLI can take it, which may be
+  the next turn, and reports `configOptions` again with the new current
+  value; when the CLI refuses it, the backend reports the unchanged settings
+  and a `notice`.
 - `didExit` is not sent when the session ended because the backend did.
 - The official SDKs route these notifications to one handler per session,
   in order, and report `turnEnded` with reason `failed` when the handler
@@ -3914,8 +3925,17 @@ Session events (`report`'s `events[]`, each tagged by `kind`):
 | `rateLimits` | `windows`: 1–8 `{id, label?, usedPercent (0–100), windowMinutes?, resetsAtMs?}`, `plan?` |
 | `turnEnded` | `turn, reason` (`completed`, `cancelled`, `maxTokens`, `maxTurns`, `refused`, `failed`), `message?` |
 | `notice` | `level` (`info`, `warning`, `error`), `text, code?` |
+| `configOptions` | `configOptions`: at most 16 `{id, name, description?, category?, currentValue, options}`, `category` one of `model`, `thoughtLevel`, `mode`, `options` 1–128 `{value, name, description?}` |
 
 - Labels and IDs are 1 byte to 1 KiB; texts at most 1 MiB.
+- `configOptions` lists the settings of the session the user may change,
+  as the session config options of the Agent Client Protocol (ACP's
+  `thought_level` is `thoughtLevel`). Setting IDs are unique, values unique
+  within a setting, and `currentValue` is one of the setting's values; a
+  `thoughtLevel` setting lists its values from least to most. Each report
+  replaces the last; an empty list withdraws them. The event names no turn
+  and may come at any time. The host shows `model` and `thoughtLevel`
+  settings by the model picker and the others as menus.
 - `message`, `toolCall`, `plan`, `permissionRequested` and `turnEnded` name
   the active turn; a `usage` turn is at most the latest one. `turnEnded`
   ends the turn and drops its pending permission requests.

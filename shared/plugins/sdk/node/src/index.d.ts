@@ -945,6 +945,12 @@ export interface AgentSession {
   cancel?(turn: number): unknown;
   /** The user answered permission request `permission` with `option`. */
   decidePermission(turn: number, permission: string, option: string): unknown;
+  /**
+   * The user picked `value` for the session setting `option`, one the backend
+   * reported in a `configOptions` event. Apply it when the CLI can take it and
+   * report the settings again.
+   */
+  setConfigOption?(option: string, value: string): unknown;
   /** The CLI ended; the session gets no further calls. */
   exited?(exitCode: number | null): unknown;
 }

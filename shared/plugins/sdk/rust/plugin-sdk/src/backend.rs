@@ -487,7 +487,8 @@ impl Backend {
     /// For each `lithe/host/agents/didStart`, `start` makes the session's
     /// [`AgentSession`] on a thread of the session's own, which then gets the
     /// session's `didOutput`, `didPrompt`, `didCancel`,
-    /// `didDecidePermission` and `didExit` one at a time, in the order Core
+    /// `didDecidePermission`, `didSetConfigOption` and `didExit` one at a
+    /// time, in the order Core
     /// sent them. When `start` fails, or a prompt fails, the SDK reports
     /// `turnEnded` with reason `failed` for the turn. A later registration
     /// replaces the earlier one.

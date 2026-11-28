@@ -9,6 +9,7 @@
       { "method": "lithe/host/agents/didOutput", "params": { "session": "agent-2", "lines": ["other"] } },
       { "method": "lithe/host/agents/didOutput", "params": { "session": "agent-1", "lines": ["three"] } },
       { "method": "lithe/host/agents/didDecidePermission", "params": { "session": "agent-1", "turn": 1, "permission": "permission-1", "option": "allow" } },
+      { "method": "lithe/host/agents/didSetConfigOption", "params": { "session": "agent-1", "option": "effort", "value": "high" } },
       { "method": "lithe/host/agents/didCancel", "params": { "session": "agent-1", "turn": 1 } },
       { "method": "lithe/host/agents/didOutput", "params": { "session": "agent-9", "lines": ["never started"] } },
       { "method": "lithe/host/agents/didExit", "params": { "session": "agent-1", "exitCode": 0 } },
@@ -21,6 +22,7 @@
         ["prompt", 1, "hello"],
         ["output", ["three"]],
         ["decidePermission", 1, "permission-1", "allow"],
+        ["setConfigOption", "effort", "high"],
         ["cancel", 1],
         ["exited", 0]
       ],
@@ -66,6 +68,7 @@
       "session": "agent-1",
       "events": [
         { "kind": "session", "agentSessionID": "cli-session-1", "model": "example-model" },
+        { "kind": "configOptions", "configOptions": [{ "id": "effort", "name": "Reasoning", "category": "thoughtLevel", "currentValue": "medium", "options": [{ "value": "medium", "name": "Medium" }, { "value": "high", "name": "High" }] }] },
         { "kind": "message", "turn": 1, "role": "assistant", "messageID": "m1", "text": "Hi", "delta": false }
       ],
       "request": {
@@ -74,6 +77,7 @@
           "session": "agent-1",
           "events": [
             { "kind": "session", "agentSessionID": "cli-session-1", "model": "example-model" },
+            { "kind": "configOptions", "configOptions": [{ "id": "effort", "name": "Reasoning", "category": "thoughtLevel", "currentValue": "medium", "options": [{ "value": "medium", "name": "Medium" }, { "value": "high", "name": "High" }] }] },
             { "kind": "message", "turn": 1, "role": "assistant", "messageID": "m1", "text": "Hi", "delta": false }
           ]
         }

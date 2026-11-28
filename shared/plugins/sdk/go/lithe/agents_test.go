@@ -80,6 +80,11 @@ func (r *recorder) DecidePermission(turn uint64, permission, option string) erro
 	return nil
 }
 
+func (r *recorder) SetConfigOption(option, value string) error {
+	r.record("setConfigOption", option, value)
+	return nil
+}
+
 func (r *recorder) Exited(exitCode *int64) {
 	r.record("exited", exitCode)
 	if r.session == "agent-2" {

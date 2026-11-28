@@ -113,6 +113,7 @@ pub(crate) mod methods {
     pub const AGENTS_DID_PROMPT: &str = "lithe/host/agents/didPrompt";
     pub const AGENTS_DID_CANCEL: &str = "lithe/host/agents/didCancel";
     pub const AGENTS_DID_DECIDE_PERMISSION: &str = "lithe/host/agents/didDecidePermission";
+    pub const AGENTS_DID_SET_CONFIG_OPTION: &str = "lithe/host/agents/didSetConfigOption";
     pub const AGENTS_DID_EXIT: &str = "lithe/host/agents/didExit";
     pub const FUNCTIONS_INVOKE: &str = "lithe/host/functions/invoke";
     pub const BUILD_MODEL: &str = "lithe/build/model";

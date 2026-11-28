@@ -15,9 +15,10 @@ import java.util.concurrent.LinkedBlockingQueue;
 /**
  * Native agent sessions (plan API-45). Core starts an agent's CLI and relays
  * it through the plugin backend: the CLI's standard output arrives as
- * {@code lithe/host/agents/didOutput}, the user's prompts, cancellations and
- * permission decisions as {@code didPrompt}, {@code didCancel} and
- * {@code didDecidePermission}, and the backend answers with
+ * {@code lithe/host/agents/didOutput}, the user's prompts, cancellations,
+ * permission decisions and setting changes as {@code didPrompt},
+ * {@code didCancel}, {@code didDecidePermission} and
+ * {@code didSetConfigOption}, and the backend answers with
  * {@code lithe/host/agents/write} (the CLI's standard input) and
  * {@code lithe/host/agents/report} (session events). A translation is only
  * right when it sees the CLI's lines in order, so every session gets one
@@ -28,7 +29,7 @@ final class AgentSessions {
     static final Set<String> NOTIFICATIONS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             Protocol.HOST_AGENTS_DID_START, Protocol.HOST_AGENTS_DID_OUTPUT, Protocol.HOST_AGENTS_DID_PROMPT,
             Protocol.HOST_AGENTS_DID_CANCEL, Protocol.HOST_AGENTS_DID_DECIDE_PERMISSION,
-            Protocol.HOST_AGENTS_DID_EXIT)));
+            Protocol.HOST_AGENTS_DID_SET_CONFIG_OPTION, Protocol.HOST_AGENTS_DID_EXIT)));
     private static final String OPERATION = "notification";
 
     private final Backend backend;
@@ -153,6 +154,9 @@ final class AgentSessions {
             case Protocol.HOST_AGENTS_DID_DECIDE_PERMISSION:
                 handler.decidePermission(notice.turn, notice.permission, notice.option);
                 return;
+            case Protocol.HOST_AGENTS_DID_SET_CONFIG_OPTION:
+                handler.setConfigOption(notice.option, notice.value);
+                return;
             default:
                 handler.exited(notice.exitCode);
         }
@@ -193,7 +197,7 @@ final class AgentSessions {
         return new Notice(method, Collections.unmodifiableList(lines),
                 turn instanceof Long && (Long) turn >= 0 ? (Long) turn : 0L,
                 string(params, "text"), string(params, "permission"), string(params, "option"),
-                exit instanceof Long ? (Long) exit : null);
+                string(params, "value"), exit instanceof Long ? (Long) exit : null);
     }
 
     private static String string(Map<String, Object> params, String key) {
@@ -203,7 +207,7 @@ final class AgentSessions {
 
     /** One notification for a session's worker. */
     private static final class Notice {
-        static final Notice CLOSED = new Notice("", Collections.<String>emptyList(), 0, "", "", "", null);
+        static final Notice CLOSED = new Notice("", Collections.<String>emptyList(), 0, "", "", "", "", null);
 
         final String method;
         final List<String> lines;
@@ -211,16 +215,18 @@ final class AgentSessions {
         final String text;
         final String permission;
         final String option;
+        final String value;
         final Long exitCode;
 
         Notice(String method, List<String> lines, long turn, String text, String permission, String option,
-                Long exitCode) {
+                String value, Long exitCode) {
             this.method = method;
             this.lines = lines;
             this.turn = turn;
             this.text = text;
             this.permission = permission;
             this.option = option;
+            this.value = value;
             this.exitCode = exitCode;
         }
     }

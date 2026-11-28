@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "maxMappingsPerScope": 256,
+  "normalizeCases": [
+    {
+      "name": "normalizes-deduplicates-and-reports-issues",
+      "payload": {
+        "knownLanguageIDs": ["toml", "json", "yaml"],
+        "global": [
+          { "pattern": " uv.lock ", "languageID": "JSON" },
+          { "pattern": "deploy\\*.toml", "languageID": "toml" },
+          { "pattern": "UV.LOCK", "languageID": "TOML" },
+          { "pattern": "/abs/path", "languageID": "toml" },
+          { "pattern": "../escape", "languageID": "toml" },
+          { "pattern": "*/*/*/*/*", "languageID": "toml" },
+          { "pattern": "foo.bar", "languageID": "bad id!" },
+          { "pattern": "baz.qux", "languageID": "rust" }
+        ],
+        "project": [
+          { "pattern": "*.lock", "languageID": "yaml" }
+        ]
+      },
+      "expectedGlobal": [
+        { "pattern": "deploy/*.toml", "languageID": "toml" },
+        { "pattern": "UV.LOCK", "languageID": "toml" }
+      ],
+      "expectedProject": [
+        { "pattern": "*.lock", "languageID": "yaml" }
+      ],
+      "expectedIssues": [
+        { "scope": "global", "index": 3, "code": "invalid_pattern", "pattern": "/abs/path", "languageID": "toml" },
+        { "scope": "global", "index": 4, "code": "invalid_pattern", "pattern": "../escape", "languageID": "toml" },
+        { "scope": "global", "index": 5, "code": "invalid_pattern", "pattern": "*/*/*/*/*", "languageID": "toml" },
+        { "scope": "global", "index": 6, "code": "invalid_language", "pattern": "foo.bar", "languageID": "bad id!" },
+        { "scope": "global", "index": 7, "code": "unknown_language", "pattern": "baz.qux", "languageID": "rust" }
+      ]
+    }
+  ],
+  "resolveCases": [
+    {
+      "name": "builtin-uv-lock",
+      "payload": { "path": "uv.lock" },
+      "expected": { "languageID": "toml", "source": "builtin", "pattern": "uv.lock" }
+    },
+    {
+      "name": "builtin-uppercase-uv-lock",
+      "payload": { "path": "UV.LOCK" },
+      "expected": { "languageID": "toml", "source": "builtin", "pattern": "uv.lock" }
+    },
+    {
+      "name": "builtin-nested-uv-lock",
+      "payload": { "path": "services/api/uv.lock" },
+      "expected": { "languageID": "toml", "source": "builtin", "pattern": "uv.lock" }
+    },
+    {
+      "name": "builtin-windows-path-uv-lock",
+      "payload": { "path": "C:\\repo\\uv.lock" },
+      "expected": { "languageID": "toml", "source": "builtin", "pattern": "uv.lock" }
+    },
+    {
+      "name": "builtin-cargo-poetry-bun-flake",
+      "payload": { "path": "bun.lock" },
+      "expected": { "languageID": "jsonc", "source": "builtin", "pattern": "bun.lock" }
+    },
+    {
+      "name": "builtin-flake-lock",
+      "payload": { "path": "flake.lock" },
+      "expected": { "languageID": "json", "source": "builtin", "pattern": "flake.lock" }
+    },
+    {
+      "name": "builtin-cargo-lock",
+      "payload": { "path": "Cargo.lock" },
+      "expected": { "languageID": "toml", "source": "builtin", "pattern": "Cargo.lock" }
+    },
+    {
+      "name": "builtin-poetry-lock",
+      "payload": { "path": "poetry.lock" },
+      "expected": { "languageID": "toml", "source": "builtin", "pattern": "poetry.lock" }
+    },
+    {
+      "name": "global-overrides-builtin",
+      "payload": {
+        "path": "uv.lock",
+        "global": [{ "pattern": "uv.lock", "languageID": "ini" }]
+      },
+      "expected": { "languageID": "ini", "source": "global", "pattern": "uv.lock" }
+    },
+    {
+      "name": "project-overrides-global",
+      "payload": {
+        "path": "uv.lock",
+        "global": [{ "pattern": "uv.lock", "languageID": "ini" }],
+        "project": [{ "pattern": "uv.lock", "languageID": "yaml" }]
+      },
+      "expected": { "languageID": "yaml", "source": "project", "pattern": "uv.lock" }
+    },
+    {
+      "name": "specificity-exact-name-beats-glob",
+      "payload": {
+        "path": "uv.lock",
+        "global": [
+          { "pattern": "*.lock", "languageID": "plaintext" },
+          { "pattern": "uv.lock", "languageID": "toml" }
+        ]
+      },
+      "expected": { "languageID": "toml", "source": "global", "pattern": "uv.lock" }
+    },
+    {
+      "name": "specificity-longer-glob-beats-shorter-glob",
+      "payload": {
+        "path": "app.config.lock",
+        "global": [
+          { "pattern": "*.lock", "languageID": "plaintext" },
+          { "pattern": "*.config.lock", "languageID": "json" }
+        ]
+      },
+      "expected": { "languageID": "json", "source": "global", "pattern": "*.config.lock" }
+    },
+    {
+      "name": "specificity-path-glob-beats-basename-glob",
+      "payload": {
+        "path": "deploy/app.lock",
+        "global": [
+          { "pattern": "*.lock", "languageID": "plaintext" },
+          { "pattern": "deploy/*.lock", "languageID": "yaml" }
+        ]
+      },
+      "expected": { "languageID": "yaml", "source": "global", "pattern": "deploy/*.lock" }
+    },
+    {
+      "name": "unmatched-returns-null",
+      "payload": { "path": "notes/unknown.zzz" },
+      "expected": { "languageID": null, "source": null, "pattern": null }
+    }
+  ]
+}

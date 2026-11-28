@@ -103,6 +103,11 @@ class AgentsTest {
                     }
 
                     @Override
+                    public void setConfigOption(String option, String value) {
+                        record(id, "setConfigOption", option, value);
+                    }
+
+                    @Override
                     public void exited(Long exitCode) {
                         record(id, "exited", exitCode);
                         if (id.equals("agent-2")) {

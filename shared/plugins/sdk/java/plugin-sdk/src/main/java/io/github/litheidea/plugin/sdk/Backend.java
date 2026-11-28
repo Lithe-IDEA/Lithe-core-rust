@@ -482,8 +482,9 @@ public final class Backend {
      * For each {@code lithe/host/agents/didStart}, {@code starter} makes the
      * session's {@link AgentSession} on a worker of the session's own, which
      * then gets the session's {@code didOutput}, {@code didPrompt},
-     * {@code didCancel}, {@code didDecidePermission} and {@code didExit} one
-     * at a time, in the order Core sent them. When the start fails, or a
+     * {@code didCancel}, {@code didDecidePermission},
+     * {@code didSetConfigOption} and {@code didExit} one at a time, in the
+     * order Core sent them. When the start fails, or a
      * prompt fails, the SDK reports {@code turnEnded} with reason
      * {@code failed} for the turn. A later registration replaces the earlier
      * one.

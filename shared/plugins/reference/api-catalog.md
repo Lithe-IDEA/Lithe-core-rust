@@ -167,7 +167,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-38 | `network/request` | 使用宿主代理策略发送有界 HTTP 请求 | `network.request` | 0 |
 | API-40 | `workspace/getHostPaths` | 远程上下文的根目录在远端主机上的绝对路径 `hostPath`，可用 `rootIDs` 指定根目录和顺序；只用在远端运行的进程参数、工作目录和语言服务器、调试器配置里；本地上下文返回 `plugin.host.authorityUnsupported` | `workspace.metadata`，单独的方法授权（只有服务授权得到 `permissionDenied`） | 0 |
 | API-45 | `agents/write` | 写本插件原生会话里 CLI 的标准输入：1–256 行，合计不超过 16 MiB，不含换行符，由 Core 补上；Core 直接回答 | `agents.native`，单独的方法授权 | 0 |
-| API-45 | `agents/report` | 报告本插件原生会话的事件（会话、消息、工具调用、计划、权限请求、用量、额度、回合结束、提示）：1–256 个，一起校验，一个被拒就全部不生效；Core 直接回答 | `agents.native`，单独的方法授权 | 0 |
+| API-45 | `agents/report` | 报告本插件原生会话的事件（会话、消息、工具调用、计划、权限请求、用量、额度、回合结束、提示、用户可改的会话设置）：1–256 个，一起校验，一个被拒就全部不生效；Core 直接回答 | `agents.native`，单独的方法授权 | 0 |
 | API-45 | `agents/usage` | 按天、Agent 或模型汇总用户已开启记录的 Agent 的用量，带最近的额度窗口；只有数字和模型名，不含对话正文、标题、会话 ID 和目录；Core 直接回答 | `agents.usage.read`，单独的方法授权 | 0 |
 
 快捷键导入提供者另有 `lithe/host/keymapImport/listInputs`、`lithe/host/keymapImport/readChunk` 两个方法，属于 `litheKeymapImport` 协议，不在 API-01–45 内，见[快捷键导入](domains/keymap-import.md)。
@@ -187,6 +187,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-45 | `agents/didPrompt` | 用户在会话里发了提示，开始新回合 `turn`，带提示正文 | `agents.native` |
 | API-45 | `agents/didCancel` | 用户取消了当前回合 | `agents.native` |
 | API-45 | `agents/didDecidePermission` | 用户回答了权限请求，带所选的 `option`；后端照此回复 CLI，自己不做决定 | `agents.native` |
+| API-45 | `agents/didSetConfigOption` | 用户为后端报告的会话设置（模型、推理等级、模式等）选了一个值，带 `option` 和 `value`；后端在 CLI 能接受时应用，再报告一次设置 | `agents.native` |
 | API-45 | `agents/didExit` | CLI 进程退出，可能带 `exitCode`；会话因后端结束而结束时不发 | `agents.native` |
 
 ### 限制
@@ -386,7 +387,7 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-38 | `network/request` | Send a bounded HTTP request with host proxy policy | `network.request` | 0 |
 | API-40 | `workspace/getHostPaths` | Gives the absolute paths `hostPath` of a remote context's root folders on the remote host, optionally for the roots `rootIDs` names, in that order; used only in the arguments, working directories, and language server or debugger configuration of what runs on that host; a local context gets `plugin.host.authorityUnsupported` | `workspace.metadata`, as a method grant of its own (the service grant alone gets `permissionDenied`) | 0 |
 | API-45 | `agents/write` | Writes the standard input of the CLI in one of this plugin's native sessions: 1–256 lines of at most 16 MiB together, without line breaks, which Core adds; answered by Core | `agents.native`, as a method grant of its own | 0 |
-| API-45 | `agents/report` | Reports the events of one of this plugin's native sessions (session, message, tool call, plan, permission request, usage, rate limits, turn end, notice): 1–256, checked together, so when one is refused none applies; answered by Core | `agents.native`, as a method grant of its own | 0 |
+| API-45 | `agents/report` | Reports the events of one of this plugin's native sessions (session, message, tool call, plan, permission request, usage, rate limits, turn end, notice, session settings the user may change): 1–256, checked together, so when one is refused none applies; answered by Core | `agents.native`, as a method grant of its own | 0 |
 | API-45 | `agents/usage` | Sums the usage of the agents whose records the user enabled, by day, agent, or model, with the latest quota windows; only numbers and model names, never conversation text, titles, session IDs, or directories; answered by Core | `agents.usage.read`, as a method grant of its own | 0 |
 
 Shortcut import providers also have two methods, `lithe/host/keymapImport/listInputs` and `lithe/host/keymapImport/readChunk`. They belong to the `litheKeymapImport` protocol, outside API-01–45; see [Shortcut import](domains/keymap-import.md).
@@ -406,6 +407,7 @@ Notifications the host sends to a backend (the backend answers none), also prefi
 | API-45 | `agents/didPrompt` | The user sent a prompt in the session, starting the new turn `turn`, with the prompt text | `agents.native` |
 | API-45 | `agents/didCancel` | The user cancelled the active turn | `agents.native` |
 | API-45 | `agents/didDecidePermission` | The user answered a permission request with `option`; the backend relays it to the CLI and decides nothing itself | `agents.native` |
+| API-45 | `agents/didSetConfigOption` | The user picked a value, `value`, for a session setting the backend reported, `option` (a model, reasoning level, mode, and so on); the backend applies it when the CLI can take it and reports the settings again | `agents.native` |
 | API-45 | `agents/didExit` | The CLI process exited, with `exitCode` when there is one; not sent when the session ended because the backend did | `agents.native` |
 
 ### Limits

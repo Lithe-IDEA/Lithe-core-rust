@@ -14,7 +14,8 @@ use lithe_lsp_transport::process::{LspProcessLauncher, LspProcessSpec, LspProces
 use lithe_lsp_transport::scripted::ScriptedServer;
 use lithe_plugin_rpc::{
     codes, AGENTS_DID_CANCEL, AGENTS_DID_DECIDE_PERMISSION, AGENTS_DID_EXIT, AGENTS_DID_OUTPUT,
-    AGENTS_DID_PROMPT, AGENTS_DID_START, AGENTS_REPORT, AGENTS_USAGE, AGENTS_WRITE,
+    AGENTS_DID_PROMPT, AGENTS_DID_SET_CONFIG_OPTION, AGENTS_DID_START, AGENTS_REPORT, AGENTS_USAGE,
+    AGENTS_WRITE,
 };
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_request_context::{trace, Source};
@@ -1080,6 +1081,142 @@ fn a_prompt_the_backend_does_not_take_ends_its_turn() {
 }
 
 #[test]
+fn session_settings_are_checked_and_reach_the_backend() {
+    let mut harness = Harness::new("settings", ALL_GRANTS);
+    let session = harness.start();
+    let set =
+        |option: &str, value: &str| json!({ "session": session, "option": option, "value": value });
+    // Nothing is offered before the backend reports its settings.
+    assert_eq!(
+        harness.refused("agents.setConfigOption", set("model", "fast")),
+        "agents.unknownConfigOption"
+    );
+
+    let settings = json!({
+        "kind": "configOptions",
+        "configOptions": [
+            {
+                "id": "model",
+                "name": "Model",
+                "category": "model",
+                "currentValue": "fast",
+                "options": [
+                    { "value": "fast", "name": "Fast" },
+                    { "value": "deep", "name": "Deep", "description": "Slower, more careful" }
+                ]
+            },
+            {
+                "id": "effort",
+                "name": "Reasoning",
+                "category": "thoughtLevel",
+                "currentValue": "medium",
+                "options": [
+                    { "value": "low", "name": "Low" },
+                    { "value": "medium", "name": "Medium" },
+                    { "value": "high", "name": "High" }
+                ]
+            }
+        ]
+    });
+    harness
+        .report(&session, json!([settings.clone()]))
+        .expect("settings are not bound to a turn");
+    assert_eq!(harness.next_event(&session, "configOptions"), settings);
+
+    assert_eq!(
+        harness.refused("agents.setConfigOption", set("mode", "plan")),
+        "agents.unknownConfigOption"
+    );
+    assert_eq!(
+        harness.refused("agents.setConfigOption", set("effort", "max")),
+        "agents.unknownConfigValue"
+    );
+    assert_eq!(
+        harness.run("agents.setConfigOption", set("effort", "high")),
+        json!({})
+    );
+    assert_eq!(
+        harness
+            .link
+            .await_notice(AGENTS_DID_SET_CONFIG_OPTION, |_| true),
+        json!({ "session": session, "option": "effort", "value": "high" })
+    );
+
+    // A setting may change while a turn runs; the backend decides when the
+    // agent takes it.
+    assert_eq!(
+        harness.run("agents.prompt", json!({ "session": session, "text": "Hi" })),
+        json!({ "turn": 1 })
+    );
+    assert_eq!(
+        harness.run("agents.setConfigOption", set("model", "deep")),
+        json!({})
+    );
+
+    // Each report replaces the settings; an empty list withdraws them.
+    harness
+        .report(
+            &session,
+            json!([{ "kind": "configOptions", "configOptions": [] }]),
+        )
+        .expect("no settings");
+    assert_eq!(
+        harness.refused("agents.setConfigOption", set("model", "fast")),
+        "agents.unknownConfigOption"
+    );
+
+    // Malformed settings are refused and leave the last ones in place.
+    let option = |current: &str, values: Value| {
+        json!([{
+            "kind": "configOptions",
+            "configOptions": [{ "id": "model", "name": "Model", "currentValue": current, "options": values }]
+        }])
+    };
+    for bad in [
+        option("other", json!([{ "value": "fast", "name": "Fast" }])),
+        option("fast", json!([])),
+        option(
+            "fast",
+            json!([{ "value": "fast", "name": "Fast" }, { "value": "fast", "name": "Again" }]),
+        ),
+        option("fast", json!([{ "value": "fast", "name": "" }])),
+        json!([{
+            "kind": "configOptions",
+            "configOptions": [
+                { "id": "model", "name": "Model", "currentValue": "fast", "options": [{ "value": "fast", "name": "Fast" }] },
+                { "id": "model", "name": "Model", "currentValue": "fast", "options": [{ "value": "fast", "name": "Fast" }] }
+            ]
+        }]),
+        json!([{
+            "kind": "configOptions",
+            "configOptions": [{ "id": "model", "name": "Model", "type": "select", "currentValue": "fast", "options": [{ "value": "fast", "name": "Fast" }] }]
+        }]),
+    ] {
+        let refusal = harness
+            .report(&session, bad)
+            .expect_err("malformed settings");
+        assert_eq!(refusal.code, codes::HOST_INVALID_PARAMS);
+    }
+    assert_eq!(
+        harness.refused("agents.setConfigOption", set("model", "fast")),
+        "agents.unknownConfigOption"
+    );
+
+    // A backend that does not take the setting is reported.
+    harness
+        .report(
+            &session,
+            option("fast", json!([{ "value": "fast", "name": "Fast" }])),
+        )
+        .expect("settings again");
+    harness.link.refuse(Some(AGENTS_DID_SET_CONFIG_OPTION));
+    assert_eq!(
+        harness.refused("agents.setConfigOption", set("model", "fast")),
+        "agents.backendUnavailable"
+    );
+}
+
+#[test]
 fn only_a_user_request_prompts_or_answers_permissions() {
     let harness = Harness::new("background", ALL_GRANTS);
     let session = harness.start();
@@ -1092,9 +1229,14 @@ fn only_a_user_request_prompts_or_answers_permissions() {
         "agents.respondPermission",
         json!({ "session": session, "permission": "p1", "option": "allow" }),
     );
+    let setting = harness.refused(
+        "agents.setConfigOption",
+        json!({ "session": session, "option": "model", "value": "fast" }),
+    );
     trace::replace(previous);
     assert_eq!(prompt, "agents.userActionRequired");
     assert_eq!(permission, "agents.userActionRequired");
+    assert_eq!(setting, "agents.userActionRequired");
     assert!(harness.link.notices_of(AGENTS_DID_PROMPT).is_empty());
 }
 

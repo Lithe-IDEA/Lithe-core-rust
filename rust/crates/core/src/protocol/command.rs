@@ -235,6 +235,8 @@ pub enum AgentsCommand {
     Cancel,
     /// Answers a pending permission request (`agents.respondPermission`).
     RespondPermission,
+    /// Picks a value of a session setting the backend reported (`agents.setConfigOption`).
+    SetConfigOption,
     /// Ends a live session (`agents.close`).
     Close,
     /// Waits, bounded, for session events after a sequence (`agents.waitEvents`).
@@ -266,6 +268,7 @@ impl AgentsCommand {
             Self::Prompt => "agents.prompt",
             Self::Cancel => "agents.cancel",
             Self::RespondPermission => "agents.respondPermission",
+            Self::SetConfigOption => "agents.setConfigOption",
             Self::Close => "agents.close",
             Self::WaitEvents => "agents.waitEvents",
             Self::RecordsConfigure => "agentSessions.configure",
@@ -740,6 +743,10 @@ pub enum EditorCommand {
     RenderHoverDoc,
     /// Resolves persisted editor presentation preferences (`editor.preferences.resolve`).
     PreferencesResolve,
+    /// Validates and normalizes global and project file type mappings (`editor.fileTypeMappings.normalize`).
+    FileTypeMappingsNormalize,
+    /// Resolves the mapped language identifier for one file path (`editor.fileTypeMappings.resolve`).
+    FileTypeMappingsResolve,
     /// Assigns nesting depths to structural bracket tokens (`editor.rainbowBrackets`).
     RainbowBrackets,
     /// Assigns stable, spelling-based colors to variable tokens (`editor.rainbowVariables`).
@@ -1256,6 +1263,7 @@ impl CoreCommand {
             "agents.prompt" => Some(Self::Agents(AgentsCommand::Prompt)),
             "agents.cancel" => Some(Self::Agents(AgentsCommand::Cancel)),
             "agents.respondPermission" => Some(Self::Agents(AgentsCommand::RespondPermission)),
+            "agents.setConfigOption" => Some(Self::Agents(AgentsCommand::SetConfigOption)),
             "agents.close" => Some(Self::Agents(AgentsCommand::Close)),
             "agents.waitEvents" => Some(Self::Agents(AgentsCommand::WaitEvents)),
             "agentSessions.configure" => Some(Self::Agents(AgentsCommand::RecordsConfigure)),
@@ -1652,6 +1660,12 @@ impl CoreCommand {
             "editor.renderDocComment" => Some(Self::Editor(EditorCommand::RenderDocComment)),
             "editor.renderHoverDoc" => Some(Self::Editor(EditorCommand::RenderHoverDoc)),
             "editor.preferences.resolve" => Some(Self::Editor(EditorCommand::PreferencesResolve)),
+            "editor.fileTypeMappings.normalize" => {
+                Some(Self::Editor(EditorCommand::FileTypeMappingsNormalize))
+            }
+            "editor.fileTypeMappings.resolve" => {
+                Some(Self::Editor(EditorCommand::FileTypeMappingsResolve))
+            }
             "editor.rainbowBrackets" => Some(Self::Editor(EditorCommand::RainbowBrackets)),
             "editor.rainbowVariables" => Some(Self::Editor(EditorCommand::RainbowVariables)),
             "editor.recent.reduce" => Some(Self::Editor(EditorCommand::RecentReduce)),

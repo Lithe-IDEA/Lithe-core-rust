@@ -47,6 +47,9 @@ function recordingBackend() {
       decidePermission(turn, permission, option) {
         record('decidePermission', turn, permission, option);
       },
+      setConfigOption(option, value) {
+        record('setConfigOption', option, value);
+      },
       exited(exitCode) {
         record('exited', exitCode);
         if (start.session === 'agent-2') otherExited.open();

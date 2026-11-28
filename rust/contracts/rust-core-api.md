@@ -487,6 +487,7 @@ or removing a command fails until the table changes in the same commit.
 | `agents.prompt` | Send the user's prompt to a live agent session |
 | `agents.cancel` | Ask the agent backend to cancel the turn in progress |
 | `agents.respondPermission` | Answer a pending agent permission request |
+| `agents.setConfigOption` | Pick a value of a session setting the agent backend reported |
 | `agents.close` | End a live agent session |
 | `agents.waitEvents` | Wait, bounded, for agent session events after a sequence |
 | `agentSessions.configure` | Open the agent session record cache |
@@ -743,6 +744,8 @@ or removing a command fails until the table changes in the same commit.
 | `editor.renderDocComment` | Parse one confirmed documentation comment slice (Javadoc-HTML, Markdown-HTML, or HTML) into bounded native document IR |
 | `editor.renderHoverDoc` | Parse one hover payload (`plaintext` or Markdown with embedded HTML) into bounded native document IR |
 | `editor.preferences.resolve` | Resolve persisted editor presentation preferences |
+| `editor.fileTypeMappings.normalize` | Validate and normalize global and project file type mappings alongside built-in mappings |
+| `editor.fileTypeMappings.resolve` | Resolve the mapped language identifier for one file path across project, global, and built-in rules |
 | `editor.rainbowBrackets` | Match bounded structural bracket tokens and assign their nesting depths |
 | `editor.rainbowVariables` | Assign stable palette values to bounded variable tokens |
 | `editor.recent.reduce` | Reduce and queries bounded recent-file history |
@@ -8810,6 +8813,22 @@ the default palette for that theme, independently of the other theme.
 An explicitly malformed palette records the WARN catalog fact
 `editor.preferences.palette_fallback_selected`, with only `palette: light|dark`
 and `reason: invalid_palette`; absence uses the normal default without a warning.
+
+`editor.fileTypeMappings.normalize` accepts optional `global` and `project` arrays of
+`{pattern, languageID}` entries plus optional `knownLanguageIDs`. It normalizes path
+separators to `/`, trims patterns, lowercases language identifiers, enforces bounded
+pattern/ID lengths and at most four wildcards per pattern, caps each scope at 256 entries,
+deduplicates case-folded patterns within a scope (last valid entry wins), and returns
+`{builtins, global, project, issues}`. Rejected entries appear in `issues` with
+`scope`, `index`, `code` (`invalid_pattern`, `invalid_language`, `unknown_language`,
+`too_many_entries`), `pattern`, and `languageID`.
+
+`editor.fileTypeMappings.resolve` accepts `{path, global?, project?, includeBuiltins?}`
+(`includeBuiltins` defaults to `true`). Matching is case-insensitive with scope precedence
+`project > global > builtin`. Within a scope, exact relative path beats exact basename,
+which beats glob relative path, which beats glob basename (ranked by literal byte length).
+It returns `{languageID, source, pattern}` (`null` fields when unmatched). Shared vectors:
+`rust/fixtures/editor/file-type-mappings-v1.json`.
 
 `editor.rainbowBrackets` accepts `{brackets:[{offset,bracket}]}` and returns
 `{colors:[{offset,depth,matchOffset?}]}` in input order, omitting unmatched closers.

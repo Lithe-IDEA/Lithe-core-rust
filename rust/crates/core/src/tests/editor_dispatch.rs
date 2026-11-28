@@ -232,3 +232,58 @@ fn copy_reference_location_matches_shared_fixture() {
         assert_eq!(response["data"], case["expected"], "{}", case["name"]);
     }
 }
+
+#[test]
+fn file_type_mappings_match_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/editor/file-type-mappings-v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        fixture["maxMappingsPerScope"],
+        lithe_editor::file_type_mappings::MAX_MAPPINGS_PER_SCOPE
+    );
+    for case in fixture["normalizeCases"].as_array().unwrap() {
+        let response: Value = serde_json::from_str(&crate::execute_json(
+            &json!({
+                "command": "editor.fileTypeMappings.normalize",
+                "payload": case["payload"]
+            })
+            .to_string(),
+        ))
+        .unwrap();
+        assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+        assert!(
+            !response["data"]["builtins"].as_array().unwrap().is_empty(),
+            "{}: expected builtins",
+            case["name"]
+        );
+        assert_eq!(
+            response["data"]["global"], case["expectedGlobal"],
+            "{}",
+            case["name"]
+        );
+        assert_eq!(
+            response["data"]["project"], case["expectedProject"],
+            "{}",
+            case["name"]
+        );
+        assert_eq!(
+            response["data"]["issues"], case["expectedIssues"],
+            "{}",
+            case["name"]
+        );
+    }
+    for case in fixture["resolveCases"].as_array().unwrap() {
+        let response: Value = serde_json::from_str(&crate::execute_json(
+            &json!({
+                "command": "editor.fileTypeMappings.resolve",
+                "payload": case["payload"]
+            })
+            .to_string(),
+        ))
+        .unwrap();
+        assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+        assert_eq!(response["data"], case["expected"], "{}", case["name"]);
+    }
+}

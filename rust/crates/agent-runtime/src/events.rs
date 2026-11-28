@@ -38,6 +38,12 @@ const MAX_PLAN_ENTRIES: usize = 256;
 /// Most windows of a rate-limit snapshot.
 pub(crate) const MAX_RATE_WINDOWS: usize = 8;
 
+/// Most settings a session reports at once.
+const MAX_CONFIG_OPTIONS: usize = 16;
+
+/// Most values of one setting.
+const MAX_CONFIG_VALUES: usize = 128;
+
 /// Most events the host queue keeps. The host reads continuously; when it
 /// falls this far behind, the oldest events are dropped and the next read
 /// says so.
@@ -62,6 +68,7 @@ pub(crate) enum SessionEvent {
     RateLimits(RateLimits),
     TurnEnded(TurnEnded),
     Notice(Notice),
+    ConfigOptions(ConfigOptions),
 }
 
 /// What the agent says about its session.
@@ -308,6 +315,53 @@ pub(crate) struct Notice {
     pub code: Option<String>,
 }
 
+/// What a setting means to the host, so it can place the setting where users
+/// expect it. The names are ACP's categories: ACP's `thought_level` is
+/// `thoughtLevel`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum ConfigCategory {
+    /// The model the session uses.
+    Model,
+    /// How hard the model thinks, its values listed from least to most.
+    ThoughtLevel,
+    /// The agent's mode, for example asking before edits or planning only.
+    Mode,
+}
+
+/// One value a setting may take.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ConfigValue {
+    pub value: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// A setting of the session the user may change, as ACP's session config
+/// option: the value it has now and the values it may take.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ConfigOption {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<ConfigCategory>,
+    pub current_value: String,
+    pub options: Vec<ConfigValue>,
+}
+
+/// The settings of the session the user may change. Each report replaces the
+/// last; an empty list means there are none.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ConfigOptions {
+    pub config_options: Vec<ConfigOption>,
+}
+
 /// Why Core refused a report: a stable code for `error.data.code` and a
 /// message that names the event by index, never its content.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -328,6 +382,8 @@ pub(crate) struct TurnState {
     pub pending: BTreeMap<String, (u64, Vec<PermissionOption>)>,
     /// The agent CLI's own session ID, once reported.
     pub agent_session_id: Option<String>,
+    /// The settings the backend last reported: ID to the values it may take.
+    pub config: BTreeMap<String, Vec<String>>,
 }
 
 impl TurnState {
@@ -395,6 +451,16 @@ impl TurnState {
                 }
             }
             SessionEvent::RateLimits(_) | SessionEvent::Notice(_) => {}
+            SessionEvent::ConfigOptions(options) => {
+                self.config = options
+                    .config_options
+                    .iter()
+                    .map(|option| {
+                        let values = option.options.iter().map(|v| v.value.clone()).collect();
+                        (option.id.clone(), values)
+                    })
+                    .collect();
+            }
             SessionEvent::TurnEnded(ended) => {
                 self.require_active(ended.turn)?;
                 self.active_turn = None;
@@ -427,6 +493,19 @@ impl TurnState {
         let turn = *turn;
         self.pending.remove(permission);
         Ok(turn)
+    }
+
+    /// Checks a value the user picked for a setting: the setting and the
+    /// value must be ones the backend last reported.
+    pub fn check_config(&self, option: &str, value: &str) -> Result<(), &'static str> {
+        let Some(values) = self.config.get(option) else {
+            return Err("agents.unknownConfigOption");
+        };
+        if values.iter().any(|candidate| candidate == value) {
+            Ok(())
+        } else {
+            Err("agents.unknownConfigValue")
+        }
     }
 }
 
@@ -523,6 +602,52 @@ fn check_bounds(event: &SessionEvent) -> Result<(), String> {
             text(&notice.text, "text")?;
             optional_label(&notice.code, "code")?;
         }
+        SessionEvent::ConfigOptions(options) => check_config_options(options)?,
+    }
+    Ok(())
+}
+
+/// Checks the settings a session reports: bounded labels, IDs and values
+/// unique, and each current value one of the setting's values.
+fn check_config_options(options: &ConfigOptions) -> Result<(), String> {
+    let label = |value: &str| !value.is_empty() && value.len() <= MAX_LABEL_BYTES;
+    let optional = |value: &Option<String>| value.as_deref().is_none_or(label);
+    if options.config_options.len() > MAX_CONFIG_OPTIONS {
+        return Err("has more than 16 settings".to_string());
+    }
+    let mut ids = Vec::with_capacity(options.config_options.len());
+    for option in &options.config_options {
+        if !label(&option.id)
+            || !label(&option.name)
+            || !optional(&option.description)
+            || !label(&option.current_value)
+        {
+            return Err("has a setting with an empty or overlong label".to_string());
+        }
+        if option.options.is_empty() || option.options.len() > MAX_CONFIG_VALUES {
+            return Err("has a setting without 1 to 128 values".to_string());
+        }
+        let mut values = Vec::with_capacity(option.options.len());
+        for value in &option.options {
+            if !label(&value.value) || !label(&value.name) || !optional(&value.description) {
+                return Err("has a setting value with an empty or overlong label".to_string());
+            }
+            values.push(value.value.as_str());
+        }
+        if !values.contains(&option.current_value.as_str()) {
+            return Err("has a setting whose current value is not one of its values".to_string());
+        }
+        values.sort_unstable();
+        values.dedup();
+        if values.len() != option.options.len() {
+            return Err("repeats a setting value".to_string());
+        }
+        ids.push(option.id.as_str());
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.len() != options.config_options.len() {
+        return Err("repeats a setting ID".to_string());
     }
     Ok(())
 }
