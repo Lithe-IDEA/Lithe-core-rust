@@ -182,7 +182,7 @@ symbolic links. A host treats an installed package as read-only.
 | `settings` | User-adjustable plugin options. |
 | `ui` | Host-rendered tool windows and commands. |
 | `buildSystems` | Project-level build tools. |
-| `commandInstallers` | How the host installs a bare command a `systemCommand` launch needs; requires `commandInstallers: 0` and `commands.install`; see [Command installers](#command-installers). |
+| `commandInstallers` | How the host installs a bare command a `systemCommand` launch or an agent's CLI needs; requires `commandInstallers: 0` and `commands.install`; see [Command installers](#command-installers). |
 | `managedRuntimes` | Pinned dependencies qualified by a packaged backend and installed in host-owned storage independent of plugin version; requires `managedRuntimes: 0` and `runtimes.install`; see [Managed runtimes](#managed-runtimes). |
 | `toolDefinitions` | Plugin-owned tool policy ([Core foundation](toolchains/README.md)); requires `toolDefinitions: 0`, or `1` when a definition sets the settings-list `category` or `audience`; a host may offer read-only discovery and resolve Build and run tools. |
 | `toolchainProviders` | Backend fact-provider declarations ([Core foundation](toolchains/README.md)); requires `toolchainProviders: 0` or `1`, `backend: 0` and `toolchains.provide`. Version 1 uses distinct permission and authority error numbers. |
@@ -1069,7 +1069,7 @@ belongs to one capability:
 | `debugAdapters` | [`debugAdapters[]`](#debug-adapters) | — | Starts the adapter and applies its [declared features and defaults](#adapter-features-and-defaults). |
 | `outputLinkMatchers` | [`outputLinkMatchers[]`](#output-link-matchers) | — | Turns Run and Test console text into links through the declared patterns. |
 | `projectGenerators` | [`projectGenerators[]`](#project-generators), including [`tool` fields](#tool-fields) | — | Lists the entries in the New Project window and generates the project. |
-| `commandInstallers` | [`commandInstallers[]`](#command-installers) | — | Reports missing commands of `systemCommand` launches and installs them after the user confirms the command line, the network use and the target. |
+| `commandInstallers` | [`commandInstallers[]`](#command-installers) | — | Reports missing commands of `systemCommand` launches and of agents' tools, and installs them after the user confirms the command line, the network use and the target. |
 | `managedRuntimes` | [`managedRuntimes`](#managed-runtimes) | Existing backend functions | Qualifies external and cached dependencies before committing an approved install/update, downloads only missing pinned artifacts, and repairs missing state before a server starts. |
 | `backend` | [`backend`](#plugin-backend): the plugin's own long-lived process | `litheFunctions` | Starts the backend with or without a page, serves the host services its permissions grant, and speaks `litheFunctions`. |
 | `toolDefinitions` | `toolDefinitions[]`: [tool identities, layouts, discovery and four-layer candidates](toolchains/README.md) | — | Resolves the definitions through the four layers. |
@@ -1481,7 +1481,7 @@ downloads a pinned archive (a **download installer**). The section requires
 | Field | Meaning |
 | --- | --- |
 | `id` | Lowercase letters, digits and `-`, at most 64 characters; unique within the plugin. |
-| `commands` | 1 to 8 bare command names the installation provides. Each one is named by a `systemCommand` launch of this manifest (a language server, build provider, VCS provider, debug adapter or the backend) and by no other installer. |
+| `commands` | 1 to 8 bare command names the installation provides. Each one is named by a `systemCommand` launch of this manifest (a language server, build provider, VCS provider, debug adapter or the backend), or by the `commands` of the tool definition of one of its [agents](#agents), and by no other installer. |
 | `tool` | Tool installer: the tool-definition ID, listed in `requiresTools`, whose executable runs the installation and the directory probes. |
 | `minimumVersion` | Tool installer, optional: lowest version of `tool`, one to three dotted numbers. |
 | `arguments` | Tool installer: arguments after the tool's executable, used by a target that does not replace them. Literal: no template variables. |
@@ -1513,8 +1513,16 @@ The user chooses the target when installing:
 At most 16 installers, 64 arguments per list, 16 environment variables per
 target, and 4096 bytes per argument or value. An environment name is uppercase
 letters, digits and `_`, not starting with a digit. Only `systemCommand`
-launches are served: a build system's or execution provider's executable
-resolved through `invocation.executables` is not.
+launches and the CLIs of agents are served: a build system's or execution
+provider's executable resolved through `invocation.executables` is not. An
+agent is served when this manifest defines its `tool`; the installer then
+installs the `commands` of that tool definition.
+
+Agent CLIs are an addition within `commandInstallers: 0`. A Core that predates
+it refuses an installer whose commands only an agent's tool names, with
+`plugin.manifest.invalid` on `commandInstallers[].commands[]`; a plugin that
+needs it also requires `agents: 0`, which no host offers without it. See
+[`command-installer-agent.plugin.json`](fixtures/command-installers/command-installer-agent.plugin.json).
 
 ### Download installers
 
@@ -1579,7 +1587,9 @@ The host never installs on its own:
 
 1. `plugins.commandInstallers.requirements` accepts `{manifest, platform?}`
    and lists each `systemCommand` launch with its commands and their
-   installer, `null` when none provides it, and the installers offered. Each
+   installer, `null` when none provides it, then each agent whose `tool` this
+   manifest defines (`kind: "agent"`, `id` the agent ID) with the `commands`
+   of that definition, and the installers offered. Each
    installer entry has `id`, `commands`, `tool`, `minimumVersion`,
    `download` (`null` for a tool installer, `{version}` for a download
    installer), `mayUseNetwork` and `targets`. With `platform: {os, arch}` a
@@ -1618,7 +1628,9 @@ The host never installs on its own:
      `download.commandDirectory` below the extracted root.
 5. Later launches of the plugin find the commands there: the host adds the
    plugin's managed command directories and the default directories it
-   recorded to the lookup of that plugin's `systemCommand` launches.
+   recorded to the lookup of that plugin's `systemCommand` launches, and
+   resolves the `kind: "command"` executables of its agents' tools in them
+   when the command is not on `PATH`.
 
 Every installer is a program of the [install review](#trust-and-install-review)
 (`kind: "commandInstaller"` with its fields), so a change to what it runs is
@@ -1628,7 +1640,8 @@ mirror, digest or version is approved again too. A host that declares only
 `commandInstallers: 0` refuses a plugin with a download installer before
 installing it. See
 [`command-installer.plugin.json`](fixtures/command-installers/command-installer.plugin.json),
-[`command-installer-download.plugin.json`](fixtures/command-installers/command-installer-download.plugin.json)
+[`command-installer-download.plugin.json`](fixtures/command-installers/command-installer-download.plugin.json),
+[`command-installer-agent.plugin.json`](fixtures/command-installers/command-installer-agent.plugin.json)
 and the golden cases in
 [`command-installer-plans.json`](fixtures/command-installers/command-installer-plans.json).
 
@@ -3867,7 +3880,7 @@ host never sees them):
 | --- | --- | --- | --- |
 | `lithe/host/agents/write` | `agents.native` | `{session, lines}` | `{}` |
 | `lithe/host/agents/report` | `agents.native` | `{session, events}` | `{}` |
-| `lithe/host/agents/usage` | `agents.usage.read` | `{sinceMs?, untilMs?, groupBy, utcOffsetSeconds?}` | `{sinceMs, untilMs, summaries, rateLimits}` |
+| `lithe/host/agents/usage` | `agents.usage.read` | `{sinceMs?, untilMs?, groupBy, utcOffsetSeconds?}` | `{sinceMs, untilMs, summaries, speeds, rateLimits}` |
 
 - `write` takes 1–256 lines of at most 16 MiB together, none with a line
   break; Core adds the newline. More than 64 writes waiting for the CLI is
@@ -3880,6 +3893,7 @@ host never sees them):
   records the user enabled, grouped by `day`, `agent` or `model`, between
   `sinceMs` and `untilMs` (default the 30 days before tomorrow, at most 366
   days; `utcOffsetSeconds` within ±14 hours sets the day boundary).
+  `speeds` ranks the models of the same calls by median output speed.
   `rateLimits` holds the latest quota windows of the agents the user may run
   or read. While the records are being written the answer is `-32020`; before
   they are opened, `-32601`; a failed read, `-32603`. It never carries
@@ -3943,13 +3957,27 @@ Lithe list, search and sum them without the CLI running:
   `unreadableEntries`. Lines reach `scan` in chunks of at most 4 MiB; a line
   longer than 16 MiB is skipped. `agentSessions.forget {pluginID, agentID}`
   drops the agent's records and answers `{files}`.
-- `agentSessions.list {agents?, cwd?, activeSinceMs?, offset, limit,
-  titles}` (at most 500), `agentSessions.search {text, agents?, sessionID?,
-  limit}` (at most 200), `agentSessions.read {agent, path, range}` and
-  `agentSessions.stats {agents?, sessionID?, sinceMs?, untilMs?, groupBy,
-  utcOffsetSeconds}` serve the host's own views; `agent` is
+- `agentSessions.list {agents?, cwd?, sessionID?, activeSinceMs?, offset,
+  limit, titles}` (at most 500), `agentSessions.search {text, agents?,
+  sessionID?, limit}` (at most 200), `agentSessions.read {agent, path,
+  range}` and `agentSessions.stats {agents?, sessionID?, sinceMs?, untilMs?,
+  groupBy, utcOffsetSeconds}` serve the host's own views; `agent` is
   `<pluginID>/<agentID>`, and `stats` groups by `day`, `agent`, `model`,
   `session` or `cwd`.
+- A listed session gives `readBytes`, how many bytes of `path` the cache has
+  read; a read range ends at most there and spans at most 16 MiB. `read`
+  answers `{changed, messages, end}`. `end` is where the next page starts: the
+  range end when the range ends a line, otherwise the start of the line the
+  range cuts, whose bytes the backend never sees. A range inside one line
+  answers `end` equal to its start and no messages; ask again with a larger
+  range. `changed` is true, with no messages and no `end`, when the file
+  changed since the cache read it; sync and list again. A backend's whole
+  `messages` answer must fit the 1 MiB function result bound, so a host pages
+  a long record with ranges well below it.
+- `sessionID`, `readBytes` and `end` were added within `agents` 0. A Core
+  that predates them refuses `sessionID` as an unknown field, answers neither
+  `readBytes` nor `end`, and may hand `read` a range that ends inside a line;
+  the backend skips a line that is not a whole JSON value.
 
 `scan` receives `{agentID, sourceID, path, lines: [{offset, length, text}],
 state?}` and has 30 seconds. It answers:
@@ -3960,7 +3988,10 @@ state?}` and has 30 seconds. It answers:
   requestedModel?, model?, contextWindow?, effort?, provider?, tokens:
   {input?, output?, cacheRead?, cacheWrite5m?, cacheWrite1h?, reasoning?},
   firstTokenMs?, durationMs?, compaction, requestID?, errorCategory?, range:
-  {start, end}}`, `key` unique in the file;
+  {start, end}}`, `key` unique in the file. A later scan of the file may
+  report a call again under its key, with a range in its own chunk, and the
+  later report replaces the earlier one: a backend that learns a call's
+  timing only when the turn ends reports the call again then;
 - `spans`: `{sessionID, atMs?, range, text}`, the searchable text, of which
   Core indexes at most 256 KiB per span;
 - `state`: at most 64 KiB the next scan of the file receives, never
@@ -3981,8 +4012,15 @@ cost?, firstStartedAtMs, lastStartedAtMs}`. `key` is `{kind: "day", date}`,
 agent, sessionID}` or `{kind: "cwd", cwd?}`. `cost` is `{usd, basis:
 "apiPriceEquivalent", pricedCalls, unpricedCalls, approximateCalls}`: what
 the tokens would cost at the API prices of `pricesFile`, not what the user
-paid. Rate limits are `{atMs, windows, plan?, pluginID, agentID}`; Core keeps
-the latest per agent in `rate-limits.json` in the cache directory.
+paid. `stats` and `usage` also answer `speeds`, the models ranked fastest
+first by the median output speed of their calls, each `{model, calls,
+medianTokensPerSecond, lowerBound}`. A call's speed is its output tokens per
+second after the first token; a call without a first-token time counts only
+with at least 1000 output tokens over at least a second, as a lower bound, and
+then `lowerBound` is true. Calls with fewer than 100 output tokens, failed
+calls and speeds above 10000 tokens per second are left out. Rate limits are
+`{atMs, windows, plan?, pluginID, agentID}`; Core keeps the latest per agent
+in `rate-limits.json` in the cache directory.
 
 `agentSessions.*` refusals: `agentSessions.notConfigured`,
 `agentSessions.invalidDirectory`, `agentSessions.invalidEnvironment`,

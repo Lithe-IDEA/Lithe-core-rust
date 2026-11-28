@@ -38,6 +38,26 @@
       "arguments": {
         "instanceID": "fixture@."
       }
+    },
+    {
+      "name": "lithe_sessions_search",
+      "arguments": {
+        "query": "retry policy"
+      }
+    },
+    {
+      "name": "lithe_sessions_search",
+      "arguments": {
+        "query": "重试",
+        "agent": "fixture.plugin/agent"
+      }
+    },
+    {
+      "name": "lithe_sessions_read",
+      "arguments": {
+        "sessionID": "fixture-session",
+        "cursor": "4096"
+      }
     }
   ],
   "rejected": [
@@ -78,6 +98,32 @@
       "name": "lithe_operation_stop",
       "arguments": {
         "sessionID": "ambiguous-output-slot"
+      }
+    },
+    {
+      "name": "lithe_sessions_search",
+      "arguments": {
+        "query": "retry",
+        "path": "/fixture/sessions"
+      }
+    },
+    {
+      "name": "lithe_sessions_search",
+      "arguments": {
+        "agent": "fixture.plugin/agent"
+      }
+    },
+    {
+      "name": "lithe_sessions_read",
+      "arguments": {
+        "agent": "fixture.plugin/agent"
+      }
+    },
+    {
+      "name": "lithe_sessions_read",
+      "arguments": {
+        "sessionID": "fixture-session",
+        "limit": 500
       }
     }
   ]

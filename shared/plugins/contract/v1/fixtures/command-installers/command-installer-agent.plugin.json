@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.agent-installer",
+  "displayName": "Agent Installer Fixture",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": {
+    "agents": 0,
+    "commandInstallers": 0,
+    "toolDefinitions": 0
+  },
+  "requiresTools": [
+    "dev.lithe.fixture.agent-installer:example-agent",
+    "dev.lithe.fixture.agent-installer:packages"
+  ],
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [
+    "agents.run",
+    "commands.install"
+  ],
+  "activationEvents": [],
+  "agents": [
+    {
+      "id": "example",
+      "displayName": "Example Agent",
+      "tool": "dev.lithe.fixture.agent-installer:example-agent",
+      "terminal": { "arguments": [] }
+    }
+  ],
+  "toolDefinitions": [
+    {
+      "id": "dev.lithe.fixture.agent-installer:example-agent",
+      "displayName": "Example Agent",
+      "executableLayouts": [{ "path": "bin/example-agent" }],
+      "executables": [{ "id": "shell", "kind": "command", "command": "example-agent" }],
+      "version": { "arguments": ["--version"], "pattern": "(\\d+(?:\\.\\d+)*)" },
+      "commands": ["example-agent"],
+      "launch": ["${executable}", "${arguments}"]
+    },
+    {
+      "id": "dev.lithe.fixture.agent-installer:packages",
+      "displayName": "Package Tool",
+      "executableLayouts": [{ "path": "bin/packages" }],
+      "executables": [{ "id": "shell", "kind": "command", "command": "packages" }],
+      "version": { "arguments": ["--version"], "pattern": "(\\d+(?:\\.\\d+)*)" },
+      "commands": ["packages"],
+      "launch": ["${executable}", "${arguments}"]
+    }
+  ],
+  "commandInstallers": [
+    {
+      "id": "example-agent",
+      "commands": ["example-agent"],
+      "tool": "dev.lithe.fixture.agent-installer:packages",
+      "arguments": ["install", "--global", "example-agent"],
+      "mayUseNetwork": true,
+      "targets": {
+        "managed": {
+          "arguments": ["install", "--prefix", "${installDirectory}", "example-agent"],
+          "commandDirectory": "bin"
+        },
+        "toolDefault": {
+          "directory": [{ "arguments": ["prefix", "--global"], "append": "bin" }]
+        }
+      }
+    }
+  ]
+}

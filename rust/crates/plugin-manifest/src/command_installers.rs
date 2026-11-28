@@ -1,5 +1,6 @@
 //! `commandInstallers[]`: how the host installs a bare command that one of the
-//! plugin's `systemCommand` launches needs and the machine lacks.
+//! plugin's `systemCommand` launches, or the CLI of one of its agents, needs
+//! and the machine lacks.
 //!
 //! The host never installs on its own. It shows the user what the
 //! installation runs or downloads, whether it uses the network and where the
@@ -69,6 +70,9 @@ const SYSTEM_COMMAND_PROGRAMS: &[(&str, &str, Option<&str>)] = &[
     ("systemVcsProvider", "vcsProvider", Some("vcs")),
 ];
 
+/// The consumer kind of an agent's CLI, keyed by the agent's ID.
+const AGENT_CONSUMER: &str = "agent";
+
 /// One way to install bare commands the plugin's launches name: a run of a
 /// tool (`tool` and `arguments`) or a pinned download (`download`), never
 /// both.
@@ -78,7 +82,8 @@ pub(crate) struct CommandInstallerDeclaration {
     /// Lowercase letters, digits, and hyphens; unique within the plugin.
     pub(crate) id: String,
     /// Bare commands the installation provides. Each is named by a
-    /// `systemCommand` launch of this manifest and by no other installer.
+    /// `systemCommand` launch of this manifest, or by the `commands` of the
+    /// tool definition of one of its agents, and by no other installer.
     pub(crate) commands: Vec<String>,
     /// Tool-definition ID, listed in `requiresTools`, whose executable runs
     /// the installation. Required unless the installer downloads.
@@ -324,7 +329,9 @@ impl CommandInstallerDeclaration {
             if !launched.contains(command) {
                 return Err(invalid(
                     entry,
-                    format!("No systemCommand launch of this plugin names {command}."),
+                    format!(
+                        "No systemCommand launch or agent tool of this plugin names {command}."
+                    ),
                 ));
             }
         }
@@ -644,8 +651,40 @@ impl DeclarativePluginManifest {
     }
 
     /// Every `systemCommand` launch the host may start, in the order of the
-    /// reviewed program list.
+    /// reviewed program list, then every agent whose tool this plugin defines,
+    /// in declaration order, with the commands of that definition. The host
+    /// finds an agent's CLI through the tool definition, whose `commands` are
+    /// the bare names it looks up; an agent whose tool another plugin defines
+    /// names no command here.
     fn command_consumers(&self) -> Vec<CommandConsumer> {
+        let mut consumers = self.system_command_consumers();
+        for agent in &self.agents {
+            let Some(definition) = self
+                .tool_definitions
+                .iter()
+                .find(|definition| definition["id"] == agent.tool.as_str())
+            else {
+                continue;
+            };
+            let commands: Vec<String> = definition["commands"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|command| command.as_str().map(str::to_string))
+                .collect();
+            if !commands.is_empty() {
+                consumers.push(CommandConsumer {
+                    kind: AGENT_CONSUMER,
+                    id: Some(agent.id.clone()),
+                    commands,
+                });
+            }
+        }
+        consumers
+    }
+
+    /// The `systemCommand` launches of the reviewed program list, in its order.
+    fn system_command_consumers(&self) -> Vec<CommandConsumer> {
         self.programs()
             .iter()
             .filter_map(|program| {
@@ -1083,6 +1122,10 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../../shared/plugins/contract/v1/fixtures/command-installers/command-installer-download.plugin.json"
     ));
+    const AGENT_PLUGIN: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../shared/plugins/contract/v1/fixtures/command-installers/command-installer-agent.plugin.json"
+    ));
     const PLANS: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../shared/plugins/contract/v1/fixtures/command-installers/command-installer-plans.json"
@@ -1104,6 +1147,7 @@ mod tests {
             let plugin: Value = serde_json::from_str(match file {
                 "command-installer.plugin.json" => PLUGIN,
                 "command-installer-download.plugin.json" => DOWNLOAD_PLUGIN,
+                "command-installer-agent.plugin.json" => AGENT_PLUGIN,
                 other => panic!("unknown plugin fixture {other}"),
             })
             .unwrap();

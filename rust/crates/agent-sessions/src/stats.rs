@@ -344,34 +344,54 @@ pub struct SpeedRank {
 /// Ranks models by median speed, fastest first, over calls with at least
 /// [`MIN_RANKED_OUTPUT_TOKENS`] output tokens and a speed.
 pub fn rank_speed<'c>(calls: impl IntoIterator<Item = &'c CallRecord>) -> Vec<SpeedRank> {
-    let mut by_model: BTreeMap<&str, (Vec<f64>, bool)> = BTreeMap::new();
+    let mut ranker = SpeedRanker::default();
     for call in calls {
+        ranker.add(call);
+    }
+    ranker.finish()
+}
+
+/// Adds calls into a [`rank_speed`] ranking one at a time, keeping only each
+/// model's speeds, so a large history never has to be in memory at once.
+#[derive(Debug, Default)]
+pub struct SpeedRanker {
+    by_model: BTreeMap<String, (Vec<f64>, bool)>,
+}
+
+impl SpeedRanker {
+    /// Adds a call; one too short or without a speed is left out.
+    pub fn add(&mut self, call: &CallRecord) {
         if call.tokens.output.unwrap_or(0) < MIN_RANKED_OUTPUT_TOKENS {
-            continue;
+            return;
         }
         let (Some(model), Some(speed)) = (model_name(call), call_speed(call)) else {
-            continue;
+            return;
         };
-        let (speeds, lower_bound) = by_model.entry(model).or_default();
+        let (speeds, lower_bound) = self.by_model.entry(model.to_string()).or_default();
         speeds.push(speed.tokens_per_second());
         *lower_bound |= matches!(speed, Speed::AtLeast(_));
     }
-    let mut ranks: Vec<SpeedRank> = by_model
-        .into_iter()
-        .map(|(model, (mut speeds, lower_bound))| SpeedRank {
-            model: model.to_string(),
-            calls: speeds.len() as u64,
-            median_tokens_per_second: median(&mut speeds),
-            lower_bound,
-        })
-        .collect();
-    ranks.sort_by(|left, right| {
-        right
-            .median_tokens_per_second
-            .total_cmp(&left.median_tokens_per_second)
-            .then_with(|| left.model.cmp(&right.model))
-    });
-    ranks
+
+    /// The ranking, fastest first; models tie by name.
+    pub fn finish(self) -> Vec<SpeedRank> {
+        let mut ranks: Vec<SpeedRank> = self
+            .by_model
+            .into_iter()
+            .map(|(model, (mut speeds, lower_bound))| SpeedRank {
+                calls: speeds.len() as u64,
+                median_tokens_per_second: median(&mut speeds),
+                model,
+                lower_bound,
+            })
+            .collect();
+        ranks.sort_by(|left, right| {
+            right
+                .median_tokens_per_second
+                .total_cmp(&left.median_tokens_per_second)
+                .then_with(|| left.model.cmp(&right.model))
+        });
+        ranks
+    }
 }
 
 /// The model a call is counted under: the one that answered, or the one asked
