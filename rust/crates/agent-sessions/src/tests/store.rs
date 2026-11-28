@@ -171,6 +171,41 @@ fn appended_lines_are_read_from_the_cursor() {
 }
 
 #[test]
+fn a_later_report_of_a_call_replaces_it() {
+    let mut fixture = Fixture::new("re-report");
+    let path = fixture.file("a.jsonl");
+    append(
+        &path,
+        &(session_line("s1", "/work/app", 1_000) + &call_line("c1", 1_100, "model-a", 10, 20)),
+    );
+    fixture.sync(std::slice::from_ref(&path));
+    let first_size = size(&path);
+
+    // A parser that learns a call's timing only later reports the call
+    // again under its key, in the chunk it learned it from.
+    let timed = json!({ "type": "call", "key": "c1", "at": 1_100, "model": "model-a",
+        "input": 10, "output": 20, "firstTokenMs": 500, "durationMs": 2_000 });
+    append(&path, &format!("{timed}\n"));
+    let report = fixture.sync(std::slice::from_ref(&path));
+    assert_eq!((report.files_read, report.files_failed), (1, 0));
+    let entries = fixture.calls();
+    assert_eq!(keys(&entries), ["c1"]);
+    let call = &entries[0].call;
+    assert_eq!(
+        (call.first_token_ms, call.duration_ms),
+        (Some(500), Some(2_000))
+    );
+    assert_eq!(call.tokens.output, Some(20));
+    assert_eq!(
+        call.range,
+        ByteRange {
+            start: first_size,
+            end: size(&path)
+        }
+    );
+}
+
+#[test]
 fn rewritten_and_truncated_files_are_read_again() {
     let mut fixture = Fixture::new("rewrite");
     let path = fixture.file("a.jsonl");

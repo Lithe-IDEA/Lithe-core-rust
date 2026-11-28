@@ -3988,7 +3988,10 @@ state?}` and has 30 seconds. It answers:
   requestedModel?, model?, contextWindow?, effort?, provider?, tokens:
   {input?, output?, cacheRead?, cacheWrite5m?, cacheWrite1h?, reasoning?},
   firstTokenMs?, durationMs?, compaction, requestID?, errorCategory?, range:
-  {start, end}}`, `key` unique in the file;
+  {start, end}}`, `key` unique in the file. A later scan of the file may
+  report a call again under its key, with a range in its own chunk, and the
+  later report replaces the earlier one: a backend that learns a call's
+  timing only when the turn ends reports the call again then;
 - `spans`: `{sessionID, atMs?, range, text}`, the searchable text, of which
   Core indexes at most 256 KiB per span;
 - `state`: at most 64 KiB the next scan of the file receives, never
