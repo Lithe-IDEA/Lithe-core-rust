@@ -616,7 +616,7 @@ ID, and `usage(params)` for usage totals.
   registering one with `onHostNotification` fails with `sdk.method.reserved`.
 - `write` and `report` need `agents.native` and act only on the plugin's own
   sessions. `usage` needs `agents.usage.read` and answers
-  `{sinceMs, untilMs, summaries, rateLimits}`: numbers and model names only,
+  `{sinceMs, untilMs, summaries, speeds, rateLimits}`: numbers and model names only,
   never conversation text, titles, session IDs or directories.
 
 ## Testing

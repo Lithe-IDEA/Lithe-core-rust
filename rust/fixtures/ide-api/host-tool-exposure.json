@@ -33,6 +33,12 @@
     },
     {
       "name": "lithe_build_execute"
+    },
+    {
+      "name": "lithe_sessions_search"
+    },
+    {
+      "name": "lithe_sessions_read"
     }
   ],
   "windows": [
@@ -68,6 +74,12 @@
     },
     {
       "name": "lithe_build_execute"
+    },
+    {
+      "name": "lithe_sessions_search"
+    },
+    {
+      "name": "lithe_sessions_read"
     }
   ]
 }

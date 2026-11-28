@@ -7,6 +7,20 @@ use super::{EventMetadata, FieldMetadata, FieldType, LogLevel, SpanPhase};
 #[rustfmt::skip]
 pub static EVENTS: &[EventMetadata] = &[
     EventMetadata {
+        id: "agent.records.inspected",
+        channel: "agent",
+        level: LogLevel::Info,
+        message: "An MCP client searched or read agent session records",
+        fields: &[
+            FieldMetadata { name: "duration", field_type: FieldType::Duration, required: true, description: "Milliseconds the call took", reason: None },
+            FieldMetadata { name: "results", field_type: FieldType::Int, required: true, description: "Hits or messages answered", reason: None },
+            FieldMetadata { name: "tool", field_type: FieldType::Token, required: true, description: "IDE tool the MCP client called, lithe_sessions_search or lithe_sessions_read; never the query, session ID or content", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "Lithe",
+    },
+    EventMetadata {
         id: "agent.records.removed",
         channel: "agent",
         level: LogLevel::Info,

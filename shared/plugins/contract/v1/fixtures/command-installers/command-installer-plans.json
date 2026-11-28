@@ -93,6 +93,95 @@
       }
     },
     {
+      "name": "an agent whose tool the plugin defines lists the commands of that definition",
+      "plugin": "command-installer-agent.plugin.json",
+      "operation": "requirements",
+      "payload": {},
+      "expected": {
+        "status": "ok",
+        "requirements": {
+          "consumers": [
+            {
+              "kind": "agent",
+              "id": "example",
+              "commands": [{ "command": "example-agent", "installer": "example-agent" }]
+            }
+          ],
+          "installers": [
+            {
+              "id": "example-agent",
+              "commands": ["example-agent"],
+              "tool": "dev.lithe.fixture.agent-installer:packages",
+              "minimumVersion": null,
+              "download": null,
+              "mayUseNetwork": true,
+              "targets": ["managed", "toolDefault"]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "an agent plan installs the CLI into the managed directory",
+      "plugin": "command-installer-agent.plugin.json",
+      "operation": "plan",
+      "payload": { "installerID": "example-agent", "target": "managed" },
+      "platforms": {
+        "unix": {
+          "payload": { "installDirectory": "/data/lithe/commands/example-agent" },
+          "expected": {
+            "status": "ok",
+            "plan": {
+              "installer": "example-agent",
+              "target": "managed",
+              "commands": ["example-agent"],
+              "tool": "dev.lithe.fixture.agent-installer:packages",
+              "minimumVersion": null,
+              "mayUseNetwork": true,
+              "timeoutMilliseconds": 600000,
+              "arguments": ["install", "--prefix", "/data/lithe/commands/example-agent", "example-agent"],
+              "environment": {},
+              "commandDirectory": "/data/lithe/commands/example-agent/bin",
+              "directoryProbes": [],
+              "download": null
+            }
+          }
+        },
+        "windows": {
+          "payload": { "installDirectory": "C:\\Lithe\\commands\\example-agent" },
+          "expected": {
+            "status": "ok",
+            "plan": {
+              "installer": "example-agent",
+              "target": "managed",
+              "commands": ["example-agent"],
+              "tool": "dev.lithe.fixture.agent-installer:packages",
+              "minimumVersion": null,
+              "mayUseNetwork": true,
+              "timeoutMilliseconds": 600000,
+              "arguments": ["install", "--prefix", "C:\\Lithe\\commands\\example-agent", "example-agent"],
+              "environment": {},
+              "commandDirectory": "C:\\Lithe\\commands\\example-agent\\bin",
+              "directoryProbes": [],
+              "download": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "an installer for a command no launch or agent tool names is refused",
+      "plugin": "command-installer-agent.plugin.json",
+      "operation": "requirements",
+      "payload": {},
+      "manifestEdits": [{ "path": "/commandInstallers/0/commands", "value": ["other-agent"] }],
+      "expected": {
+        "status": "rejected",
+        "code": "plugin.manifest.invalid",
+        "field": "commandInstallers[0].commands[0]"
+      }
+    },
+    {
       "name": "a managed plan passes the install directory through the environment",
       "operation": "plan",
       "payload": { "installerID": "sample-ls", "target": "managed" },

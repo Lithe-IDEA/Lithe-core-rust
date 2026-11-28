@@ -64,10 +64,22 @@ pub fn exposed_tools(exposure: &[ToolExposure]) -> Result<Vec<Value>, String> {
     Ok(result)
 }
 
+/// Tools a host serves only when it declares them. They read the local session records
+/// of the user's coding agents, which a host offers only while the user allows MCP
+/// clients to search them, so a host that declares nothing never serves them.
+pub const DECLARED_ONLY: [&str; 2] = ["lithe_sessions_search", "lithe_sessions_read"];
+
 /// The tools a host serves. A host that declares no selection serves the whole
-/// catalog, so a platform keeps its tools until it declares what it implements.
+/// catalog except [`DECLARED_ONLY`], so a platform keeps its workflow tools until it
+/// declares what it implements.
 pub fn served_tools(exposure: Option<&[ToolExposure]>) -> Result<Vec<Value>, String> {
-    exposure.map_or_else(|| Ok(tools()), exposed_tools)
+    match exposure {
+        Some(exposure) => exposed_tools(exposure),
+        None => Ok(tools()
+            .into_iter()
+            .filter(|tool| !DECLARED_ONLY.iter().any(|name| tool["name"] == *name))
+            .collect()),
+    }
 }
 
 /// Authorization is granted by the IDE settings UI, never by tool arguments.
@@ -112,6 +124,8 @@ pub fn tools() -> Vec<Value> {
         ("lithe_operations_list", "List retained IDE executions with their operationID, state and exit code.", "read", schema(json!({}), &[])),
         ("lithe_operation_output", "Read bounded output and state for one exact execution. Pass nextCursor to read incrementally. reset=true means output was cleared or truncated; never treats another execution as the same operation.", "read", schema(json!({"operationID":string(),"cursor":string()}), &["operationID"])),
         ("lithe_operation_stop", "Stop one exact execution. Never stops a newer execution occupying the same UI output slot. Requires execute permission.", "execute", schema(json!({"operationID":string()}), &["operationID"])),
+        ("lithe_sessions_search", "Search the local session records of the coding agents whose sessions the user lets Lithe read. Every word of the query must appear. Returns at most 20 hits, each with the agent, session ID, time and a bounded excerpt, never a file path. Searches what Lithe has already indexed. Pass agent to search one agent's sessions. Served only while the user allows MCP clients to search local sessions.", "read", schema(json!({"query":string(),"agent":string()}), &["query"])),
+        ("lithe_sessions_read", "Read the recorded messages of one local agent session, a bounded page at a time, from its start. Pass nextCursor to continue; it is valid only on this connection, so after a reconnect read from the start. hasMore=false ends the session. changed=true means the session file no longer holds what Lithe recorded. Pass agent when two agents have the session ID. Served only while the user allows MCP clients to search local sessions.", "read", schema(json!({"sessionID":string(),"agent":string(),"cursor":string()}), &["sessionID"])),
     ];
     definitions.into_iter().map(|(name, description, permission, input)| json!({
         "name":name,"description":description,"inputSchema":input,
@@ -428,6 +442,61 @@ mod tests {
             &permission
         )
         .is_err());
+    }
+    #[test]
+    fn session_tools_are_read_only_served_only_when_declared_and_take_no_path() {
+        let catalog = tools();
+        for name in DECLARED_ONLY {
+            let tool = catalog.iter().find(|tool| tool["name"] == name).unwrap();
+            assert_eq!(tool["_meta"]["lithe/permission"], "read");
+            assert_eq!(tool["annotations"]["readOnlyHint"], true);
+            let properties = tool["inputSchema"]["properties"].as_object().unwrap();
+            assert!(properties.keys().all(|key| !key.contains("path")), "{name}");
+        }
+        let declared = DECLARED_ONLY.map(|name| ToolExposure {
+            name: name.into(),
+            arguments: None,
+        });
+        let none = Permissions::default();
+        assert!(validate_exposed(
+            "lithe_sessions_search",
+            &json!({"query":"retry"}),
+            &none,
+            &declared
+        )
+        .is_ok());
+        assert!(validate_exposed(
+            "lithe_sessions_read",
+            &json!({"sessionID":"fixture-session","agent":"fixture.plugin/agent","cursor":"0"}),
+            &none,
+            &declared
+        )
+        .is_ok());
+        // A host that withdraws the declaration, as when the user turns the switch off,
+        // refuses the call even from a client that listed the tool earlier.
+        let workflow = [ToolExposure {
+            name: "lithe_run_list".into(),
+            arguments: None,
+        }];
+        assert_eq!(
+            validate_exposed(
+                "lithe_sessions_search",
+                &json!({"query":"retry"}),
+                &none,
+                &workflow
+            )
+            .unwrap_err()["error"]["code"],
+            "NOT_SUPPORTED"
+        );
+        for arguments in [
+            json!({"query":"retry","limit":500}),
+            json!({"query":["retry"]}),
+            json!({"query":"x".repeat(4097)}),
+        ] {
+            assert!(
+                validate_exposed("lithe_sessions_search", &arguments, &none, &declared).is_err()
+            );
+        }
     }
     #[test]
     fn output_cursor_detects_clear_and_truncation_and_preserves_unicode() {

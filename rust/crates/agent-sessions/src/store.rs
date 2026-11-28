@@ -239,6 +239,8 @@ pub struct SessionFilter {
     pub cwd: Option<String>,
     /// Only sessions last active at or after this time, in Unix milliseconds.
     pub active_since_ms: Option<i64>,
+    /// Only the session with this ID, in the agent's own ID format.
+    pub session_id: Option<String>,
     /// Sessions to skip, for the next page.
     pub offset: u64,
     /// Sessions to list, at most [`MAX_SESSIONS_PAGE`].
@@ -278,6 +280,9 @@ pub struct SessionEntry {
     /// The bytes of `path` that hold the title.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title_range: Option<ByteRange>,
+    /// How many bytes of `path` the cache has read: every whole line up to
+    /// here, so [`SessionStore::read_range`] takes any range that ends by it.
+    pub read_bytes: u64,
 }
 
 /// A full-text search.
@@ -503,7 +508,7 @@ impl SessionStore {
     pub fn sessions(&self, filter: &SessionFilter) -> Result<Vec<SessionEntry>, CoreError> {
         const SQL: &str = "
             WITH ranked AS (
-                SELECT f.agent, f.path, s.*,
+                SELECT f.agent, f.path, f.cursor_offset, s.*,
                        ROW_NUMBER() OVER (
                            PARTITION BY f.agent, s.session_id
                            ORDER BY s.described DESC, f.path
@@ -512,12 +517,14 @@ impl SessionStore {
                        MIN(s.started_at_ms) OVER whole AS first_started_ms,
                        MAX(s.updated_at_ms) OVER whole AS last_updated_ms
                 FROM sessions s JOIN files f ON f.id = s.file_id
-                WHERE json_array_length(?1) = 0
-                   OR f.agent IN (SELECT value FROM json_each(?1))
+                WHERE (json_array_length(?1) = 0
+                       OR f.agent IN (SELECT value FROM json_each(?1)))
+                  AND (?6 IS NULL OR s.session_id = ?6)
                 WINDOW whole AS (PARTITION BY f.agent, s.session_id)
             )
             SELECT agent, session_id, path, file_count, parent_session_id, cwd,
-                   first_started_ms, last_updated_ms, agent_version, title_start, title_end
+                   first_started_ms, last_updated_ms, agent_version, title_start, title_end,
+                   cursor_offset
             FROM ranked
             WHERE copy_rank = 1
               AND (?2 IS NULL OR cwd = ?2)
@@ -537,7 +544,8 @@ impl SessionStore {
                     filter.cwd,
                     filter.active_since_ms,
                     limit,
-                    filter.offset
+                    filter.offset,
+                    filter.session_id
                 ],
                 |row| {
                     Ok(SessionEntry {
@@ -551,6 +559,7 @@ impl SessionStore {
                         updated_at_ms: row.get(7)?,
                         agent_version: row.get(8)?,
                         title_range: optional_range(row.get(9)?, row.get(10)?),
+                        read_bytes: row.get(11)?,
                     })
                 },
             )

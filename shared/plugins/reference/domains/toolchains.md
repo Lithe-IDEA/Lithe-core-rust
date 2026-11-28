@@ -123,12 +123,13 @@
 
 | 项目 | 规则 |
 | --- | --- |
-| 声明 | `id`、`commands`（1–8 个本清单 `systemCommand` 启动用到的裸命令，一个命令只归一个安装）、`mayUseNetwork`、`timeoutSeconds?`（1–3600，默认 600）、`targets`；工具安装另有 `tool`、`minimumVersion?`、字面量 `arguments`，下载安装另有 `download` |
+| 声明 | `id`、`commands`（1–8 个本清单 `systemCommand` 启动或本插件 Agent 工具定义的 `commands` 用到的裸命令，一个命令只归一个安装）、`mayUseNetwork`、`timeoutSeconds?`（1–3600，默认 600）、`targets`；工具安装另有 `tool`、`minimumVersion?`、字面量 `arguments`，下载安装另有 `download` |
 | 下载安装 | `download.version` 是上游版本；`download.artifacts` 1–6 个归档，每个 `os`/`arch` 最多一个，各有 HTTPS `url`、可选 `mirrors`（最多 8 个）、完整 `sha256`、`archive`（`zip` 或 `tar.gz`）、可选 `stripPrefix`。只能用 `managed` 目标，不带 `arguments`、`environment`；`commandDirectory` 相对解压根目录。`mayUseNetwork` 必须为 `true`。没有当前平台归档时不提供这个安装 |
 | `managed` 目标 | 装进宿主为插件管理的目录（应用数据目录，不在应用包、安装目录或插件包里，卸载插件时删除）。`arguments`（替换安装的参数）或 `environment` 必须用唯一的模板变量 `${installDirectory}`；`commandDirectory` 是命令所在的子目录 |
 | `toolDefault` 目标 | 装到工具默认位置，值都是字面量。`directory` 最多 4 个探针，按顺序用同一工具运行，第一个输出绝对目录的探针决定位置；`pathList` 取路径列表第一项，`append` 拼接子目录 |
 | 宿主做什么 | `plugins.commandInstallers.requirements` 带上本机 `platform`，列出每个启动缺哪些命令、由哪个安装提供；`toolDefault` 先运行探针，把输出交给 `defaultDirectory`；向用户展示工具和完整命令行（下载安装展示版本和下载地址）、是否联网和每个目标的目录，用户选定后用 `plan` 展开并运行，显示输出、可取消、超时停止，结束后确认命令确实在目录里。下载安装的 `plan` 带 `platform`，返回 `download`（选中平台的归档和 `cacheKey`）；宿主依次尝试 `url` 和镜像下载，解压前校验 SHA-256，安全解压到受管目录下自己的子目录，保留文件权限 |
-| 之后的启动 | 宿主查找这个插件的 `systemCommand` 时，除 `PATH` 外还查插件的受管命令目录和记录下来的默认目录 |
+| 之后的启动 | 宿主查找这个插件的 `systemCommand`、解析它的 Agent 工具的 `kind: "command"` 候选时，除 `PATH` 外还查插件的受管命令目录和记录下来的默认目录 |
+| Agent 命令行工具 | `commandInstallers` 0 内的补充：Agent 的 `tool` 是本插件定义的工具时，`requirements` 在 `systemCommand` 启动之后列出 `kind: "agent"`、`id` 为 Agent ID 的使用方，例如用 npm 安装 Agent 的命令行工具；旧 Core 以 `plugin.manifest.invalid` 拒绝只有 Agent 工具用到的安装，需要它的插件同时要求 `agents` 0 |
 | 不覆盖 | 构建系统和执行提供者通过 `invocation.executables` 解析的可执行文件 |
 | 安装审查 | 每个安装都是审查里的程序（`kind: "commandInstaller"`），改了要运行的内容需要重新批准；下载安装的程序列出全部归档，改地址、镜像、摘要或版本也要重新批准 |
 
