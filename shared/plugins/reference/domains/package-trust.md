@@ -11,7 +11,7 @@
 | 清单字段 | `vendor.id`、`vendor.displayName`、`vendor.signatureRequirement`；官方副本可以再加 `vendor.bundledSignatureRequirement` |
 | 能力 | `packageTrust` 0，只用于 `vendor.bundledSignatureRequirement`。见[能力与协议版本](../capabilities-and-versions.md) |
 | 签名文件 | 包根目录的 `lithe-plugin-signature.json`，Ed25519 签名，覆盖包里其他所有文件 |
-| API 编号 | 不在 API-01–44 内（安装和打包层面的契约），见 [API 总表](../api-catalog.md) |
+| API 编号 | 不在 API-01–45 内（安装和打包层面的契约），见 [API 总表](../api-catalog.md) |
 | 权限、激活事件 | 没有 |
 | 宿主信任的密钥 | 由宿主决定；宿主固定自己官方插件 ID 的签名要求，社区包使用 `none` |
 | Lithe 桌面端 | 未声明 `packageTrust`：要求它的包不会被提供安装，见[宿主现状](#宿主现状) |
@@ -112,7 +112,7 @@ This page covers the package layout, the signature requirement in the manifest, 
 | Manifest fields | `vendor.id`, `vendor.displayName`, `vendor.signatureRequirement`; an official copy may add `vendor.bundledSignatureRequirement` |
 | Capability | `packageTrust` 0, only for `vendor.bundledSignatureRequirement`. See [capabilities and protocol versions](../capabilities-and-versions.md) |
 | Signature file | `lithe-plugin-signature.json` at the package root, an Ed25519 signature over every other file in the package |
-| API number | Outside API-01–44 (an installation and packaging contract); see the [API catalog](../api-catalog.md) |
+| API number | Outside API-01–45 (an installation and packaging contract); see the [API catalog](../api-catalog.md) |
 | Permissions, activation events | None |
 | Keys hosts trust | The host decides; it pins the signature requirement of its official plugin IDs, and community packages use `none` |
 | Lithe desktop | Does not declare `packageTrust`: packages that require it are not offered for installation. See [Host status](#host-status) |

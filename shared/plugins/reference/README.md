@@ -10,7 +10,7 @@
 
 | 想知道 | 看这里 |
 | --- | --- |
-| API-01–44 每一项现在能用什么、还缺什么 | [插件 API 总表](api-catalog.md) |
+| API-01–45 每一项现在能用什么、还缺什么 | [插件 API 总表](api-catalog.md) |
 | `requires` 能力版本、进程协议版本、文档格式版本，以及 Core 和 Lithe 桌面端支持哪些 | [能力与协议版本对照](capabilities-and-versions.md) |
 | 每个协议、能力和 API 是哪天、哪个 PR 改的 | [插件协议更新记录](protocol-changelog.md)（只有中文） |
 | 某个功能的字段、宿主现状、契约章节和示例 | 下方的功能页 |
@@ -33,6 +33,7 @@
 | [版本控制提供者](domains/vcs.md) | VCS 提供者进程和协议 | API-31 | `vcsProviders` |
 | [项目生成器](domains/project-generators.md) | 新建项目的模板和步骤 | API-33 | `projectGenerators` |
 | [工具链](domains/toolchains.md) | 工具定义、可执行文件候选、工具链提供者、Core 命令 | API-23 | `toolDefinitions`、`toolchainProviders` |
+| [Agent](domains/agents.md) | 用户自己安装的 Agent CLI：原生会话、终端形式、更新命令、会话记录与用量汇总 | API-45 | `agents` |
 | [快捷键导入](domains/keymap-import.md) | 从其他编辑器导入快捷键的提供者 | 不在编号内 | `keymapImportProviders` |
 | [包信任](domains/package-trust.md) | 签名要求、签名文件格式、随应用发布的插件 | 不在编号内 | `packageTrust` |
 | [插件市场](domains/marketplace.md) | 索引来源和格式、可用性判断、安装审查和确认 | 不在编号内 | — |
@@ -57,7 +58,7 @@ This directory organizes the plugin contract by feature: what each numbered API 
 
 | To find | Go to |
 | --- | --- |
-| What each of API-01–44 offers today and what is missing | [Plugin API catalog](api-catalog.md) |
+| What each of API-01–45 offers today and what is missing | [Plugin API catalog](api-catalog.md) |
 | `requires` capability versions, process protocol versions, document format versions, and which of them Core and the Lithe desktop client support | [Capability and protocol versions](capabilities-and-versions.md) |
 | When, and in which PR, each protocol, capability, and API changed | [Plugin protocol changelog](protocol-changelog.md) (Chinese only) |
 | A feature's fields, host status, contract sections, and examples | The feature pages below |
@@ -80,6 +81,7 @@ This directory organizes the plugin contract by feature: what each numbered API 
 | [VCS providers](domains/vcs.md) | VCS provider processes and protocol | API-31 | `vcsProviders` |
 | [Project generators](domains/project-generators.md) | New-project templates and steps | API-33 | `projectGenerators` |
 | [Toolchains](domains/toolchains.md) | Tool definitions, executable candidates, toolchain providers, Core commands | API-23 | `toolDefinitions`, `toolchainProviders` |
+| [Agents](domains/agents.md) | Agent CLIs the user installed: native sessions, terminal forms, update commands, session records, and usage totals | API-45 | `agents` |
 | [Shortcut import](domains/keymap-import.md) | Providers that import shortcuts from other editors | Not numbered | `keymapImportProviders` |
 | [Package trust](domains/package-trust.md) | Signature requirements, the signature file format, plugins bundled with the application | Not numbered | `packageTrust` |
 | [Marketplace](domains/marketplace.md) | Index sources and format, availability, install review and confirmation | Not numbered | — |

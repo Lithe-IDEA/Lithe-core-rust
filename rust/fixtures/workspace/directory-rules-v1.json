@@ -109,10 +109,67 @@
         "target": {"marks": {"vendor": "plain", "vendor/pkg": "package"}, "includedDirectories": ["vendor/pkg/gen"], "previousRoles": {"vendor/pkg": "sources"}}}
     }
   ],
+  "resolve": [
+    {
+      "id": "plugin-layers-sit-between-shared-and-glob",
+      "request": {
+        "rules": {"marks": {"manual": "sources"}, "includedDirectories": [], "previousRoles": {}},
+        "sharedRules": {"marks": {"db/override": "generated"}, "includedDirectories": [], "previousRoles": {}},
+        "pluginTypes": [
+          {"pluginId": "com.example.b", "id": "plugin.migrations", "name": "Other", "icon": "folder", "color": "#111111"},
+          {"pluginId": "com.example.a", "id": "plugin.migrations", "name": "Migrations", "tag": "migrations", "icon": "database", "color": "#0D9488", "tintBg": true, "inheritBg": true},
+          {"pluginId": "com.example.a", "id": "plugin.cache", "name": "Cache", "icon": "archive", "color": "#64748b", "excludeIndexing": true, "matchGlob": ".cache"}
+        ],
+        "pluginMarks": [
+          {"pluginId": "com.example.b", "path": "db/migrations", "role": "sources"},
+          {"pluginId": "com.example.a", "path": "db/migrations", "role": "plugin.migrations"},
+          {"pluginId": "com.example.a", "path": "db/override", "role": "plugin.migrations"},
+          {"pluginId": "com.example.a", "path": "manual", "role": "excluded"},
+          {"pluginId": "com.example.a", "path": "out", "role": "excluded", "color": "#ff0000"}
+        ],
+        "paths": ["db/migrations", "db/migrations/V1", "db/override", "manual", "out", "pkg/.cache"]
+      },
+      "response": {
+        "entries": {
+          "db/migrations": {"role": "plugin.migrations", "source": "plugin", "pluginId": "com.example.a", "icon": "database", "color": "#0d9488", "bgColor": "#0d9488", "tintText": false, "tag": "migrations", "excluded": false, "readOnlyHint": false},
+          "db/migrations/V1": {"role": "plain", "source": "inherited", "icon": "folder", "bgColor": "#0d9488", "tintText": false, "excluded": false, "readOnlyHint": false},
+          "db/override": {"role": "generated", "source": "shared", "icon": "generated", "color": "#9f7aea", "bgColor": "#9f7aea", "tintText": false, "tag": "generated", "excluded": false, "readOnlyHint": true},
+          "manual": {"role": "sources", "source": "user", "icon": "sources", "color": "#4e8df5", "bgColor": "#4e8df5", "tintText": false, "tag": "sources", "excluded": false, "readOnlyHint": false, "autoFallbackRole": "excluded"},
+          "out": {"role": "excluded", "source": "plugin", "pluginId": "com.example.a", "icon": "excluded", "color": "#ff0000", "bgColor": "#ff0000", "tintText": false, "tag": "excluded", "excluded": true, "readOnlyHint": false},
+          "pkg/.cache": {"role": "plugin.cache", "source": "glob", "pluginId": "com.example.a", "icon": "archive", "color": "#64748b", "tintText": false, "excluded": true, "readOnlyHint": false}
+        },
+        "manualExcludedDirectories": ["out", "pkg/.cache"]
+      }
+    },
+    {
+      "id": "explicit-plugin-exclusions-need-no-paths",
+      "request": {
+        "rules": {},
+        "pluginTypes": [
+          {"pluginId": "com.example.a", "id": "plugin.cache", "name": "Cache", "icon": "archive", "color": "#64748b", "excludeIndexing": true}
+        ],
+        "pluginMarks": [
+          {"pluginId": "com.example.a", "path": "vendor", "role": "excluded"},
+          {"pluginId": "com.example.a", "path": "gen", "role": "plugin.cache"},
+          {"pluginId": "com.example.a", "path": "src", "role": "sources"}
+        ]
+      },
+      "response": {
+        "entries": {},
+        "manualExcludedDirectories": ["gen", "vendor"]
+      }
+    }
+  ],
   "invalid": [
     {"command": "workspace.reduceDirectoryAction", "request": {"path": "../x", "action": {"kind": "exclude"}, "rules": {}}},
     {"command": "workspace.reduceDirectoryAction", "request": {"path": "x", "action": {"kind": "setRole", "role": "excluded"}, "rules": {}}},
     {"command": "workspace.reduceDirectoryAction", "request": {"path": "x", "action": {"kind": "exclude"}, "rules": {"marks": {"y": "bogus"}}}},
-    {"command": "workspace.relocateDirectoryRules", "request": {"source": "x", "rules": {}, "target": {}}}
+    {"command": "workspace.relocateDirectoryRules", "request": {"source": "x", "rules": {}, "target": {}}},
+    {"command": "workspace.resolveDirectoryPresentation", "request": {"rules": {}, "paths": null}},
+    {"command": "workspace.resolveDirectoryPresentation", "request": {"rules": {}, "pluginTypes": [{"pluginId": "p", "id": "custom.x", "name": "X", "icon": "folder", "color": "#000000"}]}},
+    {"command": "workspace.resolveDirectoryPresentation", "request": {"rules": {}, "pluginTypes": [{"pluginId": "p", "id": "plugin.x", "name": "  ", "icon": "folder", "color": "#000000"}]}},
+    {"command": "workspace.resolveDirectoryPresentation", "request": {"rules": {}, "pluginTypes": [{"pluginId": "p", "id": "plugin.x", "name": "X", "icon": "module", "color": "#000000"}]}},
+    {"command": "workspace.resolveDirectoryPresentation", "request": {"rules": {}, "pluginMarks": [{"pluginId": "p", "path": "x", "role": "custom.x"}]}},
+    {"command": "workspace.resolveDirectoryPresentation", "request": {"rules": {}, "pluginMarks": [{"pluginId": "", "path": "x", "role": "sources"}]}}
   ]
 }

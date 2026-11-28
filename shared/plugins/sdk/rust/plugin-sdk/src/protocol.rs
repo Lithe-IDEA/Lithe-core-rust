@@ -93,6 +93,8 @@ pub(crate) mod methods {
     pub const CLIPBOARD_READ_TEXT: &str = "lithe/host/clipboard/readText";
     pub const CLIPBOARD_WRITE_TEXT: &str = "lithe/host/clipboard/writeText";
     pub const WORKSPACE_REVEAL: &str = "lithe/host/workspace/reveal";
+    pub const WORKSPACE_SET_DIRECTORY_TYPES: &str = "lithe/host/workspace/setDirectoryTypes";
+    pub const WORKSPACE_SET_DIRECTORY_MARKS: &str = "lithe/host/workspace/setDirectoryMarks";
     pub const NETWORK_REQUEST: &str = "lithe/host/network/request";
     pub const PREVIEW_OPEN_HTML: &str = "lithe/host/preview/openHTML";
     pub const BROWSER_OPEN_EXTERNAL: &str = "lithe/host/browser/openExternal";
@@ -103,6 +105,15 @@ pub(crate) mod methods {
     pub const SUBSCRIPTION_NOTIFY: &str = "lithe/host/subscriptions/notify";
     pub const COMMAND_DID_RUN: &str = "lithe/host/commands/didRun";
     pub const FUNCTIONS_PROVIDERS: &str = "lithe/host/functions/providers";
+    pub const AGENTS_WRITE: &str = "lithe/host/agents/write";
+    pub const AGENTS_REPORT: &str = "lithe/host/agents/report";
+    pub const AGENTS_USAGE: &str = "lithe/host/agents/usage";
+    pub const AGENTS_DID_START: &str = "lithe/host/agents/didStart";
+    pub const AGENTS_DID_OUTPUT: &str = "lithe/host/agents/didOutput";
+    pub const AGENTS_DID_PROMPT: &str = "lithe/host/agents/didPrompt";
+    pub const AGENTS_DID_CANCEL: &str = "lithe/host/agents/didCancel";
+    pub const AGENTS_DID_DECIDE_PERMISSION: &str = "lithe/host/agents/didDecidePermission";
+    pub const AGENTS_DID_EXIT: &str = "lithe/host/agents/didExit";
     pub const FUNCTIONS_INVOKE: &str = "lithe/host/functions/invoke";
     pub const BUILD_MODEL: &str = "lithe/build/model";
     pub const BUILD_DEPENDENCIES: &str = "lithe/build/dependencies";

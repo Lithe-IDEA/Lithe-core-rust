@@ -1,10 +1,10 @@
-# 插件 API 总表（API-01–44） / Plugin API catalog (API-01–44)
+# 插件 API 总表（API-01–45） / Plugin API catalog (API-01–45)
 
 [中文](#中文) · [English](#english)
 
 ## 中文
 
-Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md)统一编号为 API-01 到 API-44。本页列出每个编号**现在能用什么**、**还没有什么**，并把能用的部分链接到契约章节和功能页。参数、返回值、错误码以 [`contract/v1/README.md`](../contract/v1/README.md) 为准；版本号见[能力与协议版本对照](capabilities-and-versions.md)。内容以本仓库 `main` 上的契约和 Core 源码为准。
+Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md)统一编号为 API-01 到 API-45。本页列出每个编号**现在能用什么**、**还没有什么**，并把能用的部分链接到契约章节和功能页。参数、返回值、错误码以 [`contract/v1/README.md`](../contract/v1/README.md) 为准；版本号见[能力与协议版本对照](capabilities-and-versions.md)。内容以本仓库 `main` 上的契约和 Core 源码为准。
 
 读这张表前先知道三件事：
 
@@ -61,6 +61,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-38 | 受管网络 | 部分完成 | `network/request`：可取消、有界 HTTP(S) | 下载文件、身份验证会话 | [工作流](../guides/plugin-workflows.md) |
 | API-40 | 工作区 authority | 部分完成 | [工作区上下文](../contract/v1/README.md#workspace-contexts-and-capability-discovery)带 `local` 或 `remote`，远程的另带远端主机的 `platform`（`os`、`arch`）；`workspace/getHostPaths` 单独给出根目录在远端主机上的路径；文件和编辑器方法对远程上下文明确返回 `plugin.host.authorityUnsupported`；远程专用的失败码 `remoteDisconnected`、`platformUnavailable` | 远程执行（进程、语言服务器、调试器在远端主机上运行）、贡献的运行位置 `placement` | [插件后端](domains/backend.md)、[远程工作区](../guides/plugin-backend-remote-workspaces.md) |
 | API-41 | 激活事件与启动预算 | 部分完成 | [`onWorkspaceOpen`](../contract/v1/README.md#permissions-and-activation)、`onCommand`、后台两路并发启动、`initialize` 超时、有界通知队列 | 按工作区内容匹配激活、全局冷启动预算 | [插件后端](domains/backend.md) |
+| API-45 | Agent | 部分完成 | [`agents`](../contract/v1/README.md#agents) 声明用户自己安装的 Agent CLI：[原生会话](../contract/v1/README.md#native-sessions)（Core 启动和回收 CLI，后端用 `agents/write`、`agents/report` 翻译 CLI 自己的协议）、终端形式、更新命令；用户逐个 Agent 同意后，Core 读取声明目录里的[会话记录](../contract/v1/README.md#session-records)，后端解析，Core 缓存、搜索和统计；`agents/usage` 汇总用量与额度，不含对话正文、标题、会话 ID 和目录 | ACP 客户端（`acp` 只校验、列入审查）、MCP 会话搜索、远程工作区；Lithe 桌面端尚未声明 `agents` | [Agent](domains/agents.md) |
 
 ### 计划中的 API
 
@@ -76,14 +77,14 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-43 | 保存前事件 | 未做 | 保存前事件，以及有时限的保存前编辑 |
 | API-44 | Agent 侧贡献 | 未做 | 插件贡献 Skills、Hooks、MCP，并单独审查授权 |
 
-清单、市场、包信任、快捷键导入是安装和打包层面的契约，不在 API-01–44 编号内，见各自的功能页：[清单](domains/manifest.md)、[市场](domains/marketplace.md)、[包信任](domains/package-trust.md)、[快捷键导入](domains/keymap-import.md)。
+清单、市场、包信任、快捷键导入是安装和打包层面的契约，不在 API-01–45 编号内，见各自的功能页：[清单](domains/manifest.md)、[市场](domains/marketplace.md)、[包信任](domains/package-trust.md)、[快捷键导入](domains/keymap-import.md)。
 
 ### 已公开的宿主方法
 
 后端向宿主发送的请求，前缀都是 `lithe/host/`，下表省略前缀。一个 API 编号下可以有多个方法，每个方法单独一行，按 API 编号排列。
 
 - **“API”列是规划编号**，来自 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md)，和“协议”列的 `litheFunctions` 版本、清单里的能力版本分开记录。同一个 API 的方法可以分几个 PR 陆续加入；向后兼容地新增方法不升协议版本（见契约 [Extending the host services](../contract/v1/README.md#extending-the-host-services)）。每个方法哪天、由哪个 PR 首次加入，见[插件协议更新记录](protocol-changelog.md#宿主方法按-api-编号)。
-- **“协议”列**是方法所属的 `litheFunctions` 版本，现在都是 0。除 `getCapabilities`、`subscriptions/dispose`、`workspace/listContexts`、`credentials/*`、`run/stop`、`functions/providers` 外，其余方法都要带 `context: {contextID, generation}`。`functions/*` 只对声明了至少一个 `calls` 的后端开放；官方 SDK 都已封装 `functions/providers` 和 `functions/invoke`。
+- **“协议”列**是方法所属的 `litheFunctions` 版本，现在都是 0。除 `getCapabilities`、`subscriptions/dispose`、`workspace/listContexts`、`credentials/*`、`run/stop`、`functions/providers`、`agents/*` 外，其余方法都要带 `context: {contextID, generation}`；`agents/*` 改用 `session` 指明会话，由 Core 直接回答，不经过宿主。`functions/*` 只对声明了至少一个 `calls` 的后端开放；官方 SDK 都已封装 `functions/providers` 和 `functions/invoke`。
 - **“权限”列**：每个权限都要求清单声明 `backend`（`requires.backend` 为 0），否则安装时拒绝。`functions/*` 没有清单权限，由清单 `pluginFunctions` 段的 `calls` 是否声明了该函数决定。另有两条前置条件：`debug.start` 还要求已声明的 `debugAdapters` 条目；`languageServer.request` 只在某个语言服务器列出 `requestMethods` 或 `forwardNotifications` 时才能声明。
 
 | API | 方法 | 用途 | 权限 | 协议 |
@@ -95,6 +96,8 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-05 | `workspace/listContexts` | 列出当前的工作区上下文，带变化序号 `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | 读取一个工作区上下文 | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | 列出上下文的根目录，每个根目录带 `rootID` | `workspace.metadata` | 0 |
+| API-05 | `workspace/setDirectoryTypes` | 注册或替换本插件会话在当前上下文提供的自定义目录类型（最多 32 个，`id` 以 `plugin.` 开头） | `workspace.directoryMarks` | 0 |
+| API-05 | `workspace/setDirectoryMarks` | 注册或替换本插件会话在当前上下文的动态目录标记与可选配色（最多 500 条），优先级低于用户与项目共享规则、高于 Glob 与 `.gitignore` | `workspace.directoryMarks` | 0 |
 | API-06 | `workspace/readDirectory` | 分页列出目录项；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
 | API-06 | `workspace/stat` | 读取文件或目录的类型、大小和修改时间；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
 | API-06 | `workspace/readFile` | 读取磁盘上的文件，返回文本或 base64，超过上限时截断；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
@@ -163,8 +166,11 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-35 | `functions/invoke` | 经 Core 调用另一个插件导出的函数，可带 `parentOperationID` 标明所属调用链，返回 `{value}` | 无清单权限，需在 `pluginFunctions.calls` 声明该函数 | 0 |
 | API-38 | `network/request` | 使用宿主代理策略发送有界 HTTP 请求 | `network.request` | 0 |
 | API-40 | `workspace/getHostPaths` | 远程上下文的根目录在远端主机上的绝对路径 `hostPath`，可用 `rootIDs` 指定根目录和顺序；只用在远端运行的进程参数、工作目录和语言服务器、调试器配置里；本地上下文返回 `plugin.host.authorityUnsupported` | `workspace.metadata`，单独的方法授权（只有服务授权得到 `permissionDenied`） | 0 |
+| API-45 | `agents/write` | 写本插件原生会话里 CLI 的标准输入：1–256 行，合计不超过 16 MiB，不含换行符，由 Core 补上；Core 直接回答 | `agents.native`，单独的方法授权 | 0 |
+| API-45 | `agents/report` | 报告本插件原生会话的事件（会话、消息、工具调用、计划、权限请求、用量、额度、回合结束、提示）：1–256 个，一起校验，一个被拒就全部不生效；Core 直接回答 | `agents.native`，单独的方法授权 | 0 |
+| API-45 | `agents/usage` | 按天、Agent 或模型汇总用户已开启记录的 Agent 的用量，带最近的额度窗口；只有数字和模型名，不含对话正文、标题、会话 ID 和目录；Core 直接回答 | `agents.usage.read`，单独的方法授权 | 0 |
 
-快捷键导入提供者另有 `lithe/host/keymapImport/listInputs`、`lithe/host/keymapImport/readChunk` 两个方法，属于 `litheKeymapImport` 协议，不在 API-01–44 内，见[快捷键导入](domains/keymap-import.md)。
+快捷键导入提供者另有 `lithe/host/keymapImport/listInputs`、`lithe/host/keymapImport/readChunk` 两个方法，属于 `litheKeymapImport` 协议，不在 API-01–45 内，见[快捷键导入](domains/keymap-import.md)。
 
 宿主发给后端的通知（后端不回复），前缀同样是 `lithe/host/`：
 
@@ -176,6 +182,12 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-23 | `run/didExit` | 后端用 `run/start` 启动的运行结束，带 `exitCode` 或 `signal`（宿主丢失进程时两者都没有）；每次运行只发一次 | `run.start` |
 | API-25 | `languageServer/didChangeState` | 本插件某个语言服务器的状态变化（`starting`、`running`、`stopped`、`crashed`），带 `generation` | `languageServer.request` |
 | API-25 | `languageServer/didReceiveNotification` | 转发服务器发出、`forwardNotifications` 列出的通知；超过 `limits.notificationBytes` 时只送一次 `truncated: true`，不带 `params` | `languageServer.request` |
+| API-45 | `agents/didStart` | Core 为本插件启动了一个原生会话，带 `session`、`agentID`、`cwd`，续接时带 `resume` | `agents.native` |
+| API-45 | `agents/didOutput` | CLI 标准输出的完整行，按顺序；每条最多 64 行或 4 MiB | `agents.native` |
+| API-45 | `agents/didPrompt` | 用户在会话里发了提示，开始新回合 `turn`，带提示正文 | `agents.native` |
+| API-45 | `agents/didCancel` | 用户取消了当前回合 | `agents.native` |
+| API-45 | `agents/didDecidePermission` | 用户回答了权限请求，带所选的 `option`；后端照此回复 CLI，自己不做决定 | `agents.native` |
+| API-45 | `agents/didExit` | CLI 进程退出，可能带 `exitCode`；会话因后端结束而结束时不发 | `agents.native` |
 
 ### 限制
 
@@ -199,6 +211,11 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | `debug/start` | `configuration` ≤256 KiB |
 | 内容提供者 | 提供的内容 ≤1 MiB，宿主等待 30 秒 |
 | `functions/invoke` | `timeoutMilliseconds` 默认 60000 ms，上限 600000 ms；`parentOperationID` 1–128 字节 |
+| `agents/write` | 1–256 行，合计 16 MiB；等待 CLI 读取的写入最多 64 个 |
+| `agents/report` | 1–256 个事件；标签和 ID 1 字节到 1 KiB，正文最多 1 MiB；待回答的权限请求最多 16 个 |
+| `agents/didOutput` | 每条最多 64 行或 4 MiB；超过 16 MiB 的单行被丢弃 |
+| `agents/usage` | 默认 30 天，最多 366 天 |
+| Agent 原生启动函数 | `timeoutMilliseconds` 1000–120000 ms，默认 15000 |
 
 失败时的错误码和处理方式见契约的 [Outcomes and error codes](../contract/v1/README.md#outcomes-and-error-codes) 与[宿主失败码表](../contract/v1/README.md#workspace-contexts-and-capability-discovery)。取消或超时**不保证回滚**：编辑可能已经生效，不要自动重放。
 
@@ -206,7 +223,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 
 ## English
 
-Lithe numbers its public plugin APIs API-01 to API-44 in the [API implementation plan](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md). This page lists, for each ID, **what is usable now** and **what is still missing**, and links the usable parts to contract sections and domain pages. [`contract/v1/README.md`](../contract/v1/README.md) is normative for params, results, and error codes; versions are in [Capability and protocol versions](capabilities-and-versions.md). It follows the contract and Core source on this repository's `main`.
+Lithe numbers its public plugin APIs API-01 to API-45 in the [API implementation plan](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md). This page lists, for each ID, **what is usable now** and **what is still missing**, and links the usable parts to contract sections and domain pages. [`contract/v1/README.md`](../contract/v1/README.md) is normative for params, results, and error codes; versions are in [Capability and protocol versions](capabilities-and-versions.md). It follows the contract and Core source on this repository's `main`.
 
 Three things to know before reading the tables:
 
@@ -263,6 +280,7 @@ Status meanings:
 | API-38 | Managed network | Partial | `network/request`: bounded HTTP(S) with cancellation | File downloads and authentication sessions | [Workflows](../guides/plugin-workflows.md) |
 | API-40 | Workspace authority | Partial | [Workspace contexts](../contract/v1/README.md#workspace-contexts-and-capability-discovery) carry `local` or `remote`, and a remote one also the remote host's `platform` (`os`, `arch`); `workspace/getHostPaths` gives the roots' paths on the remote host on its own; file and editor methods refuse a remote context with `plugin.host.authorityUnsupported`; the remote failure codes `remoteDisconnected` and `platformUnavailable` | Remote execution (processes, language servers, and debuggers running on the remote host), the `placement` of contributions | [Plugin backend](domains/backend.md), [Remote workspaces](../guides/plugin-backend-remote-workspaces.md) |
 | API-41 | Activation events and startup budget | Partial | [`onWorkspaceOpen`](../contract/v1/README.md#permissions-and-activation), `onCommand`, two concurrent background starts, `initialize` timeout, bounded notification queues | Activation by workspace content, a global cold-start budget | [Plugin backend](domains/backend.md) |
+| API-45 | Agents | Partial | [`agents`](../contract/v1/README.md#agents) declares agent CLIs the user installed: [native sessions](../contract/v1/README.md#native-sessions) (Core starts and reaps the CLI; the backend translates the CLI's own protocol with `agents/write` and `agents/report`), terminal forms, and update commands. After the user consents for an agent, Core reads the [session records](../contract/v1/README.md#session-records) in the declared directories, the backend parses them, and Core caches, searches, and sums them; `agents/usage` sums usage and quotas without conversation text, titles, session IDs, or directories | An ACP client (`acp` is only validated and reviewed), MCP session search, remote workspaces; the Lithe desktop client does not declare `agents` yet | [Agents](domains/agents.md) |
 
 ### Planned APIs
 
@@ -278,14 +296,14 @@ Status meanings:
 | API-43 | Will-save events | Not started | Will-save events and time-bounded edits before save |
 | API-44 | Agent contributions | Not started | Skills, hooks, and MCP contributed by plugins, with separate authorization review |
 
-The manifest, marketplace, package trust, and shortcut import are installation and packaging contracts outside API-01–44; see their domain pages: [Manifest](domains/manifest.md), [Marketplace](domains/marketplace.md), [Package trust](domains/package-trust.md), [Shortcut import](domains/keymap-import.md).
+The manifest, marketplace, package trust, and shortcut import are installation and packaging contracts outside API-01–45; see their domain pages: [Manifest](domains/manifest.md), [Marketplace](domains/marketplace.md), [Package trust](domains/package-trust.md), [Shortcut import](domains/keymap-import.md).
 
 ### Public host methods
 
 Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omit the prefix. One API ID can cover several methods; each method has its own row, ordered by API ID.
 
 - **The “API” column holds planning IDs** from the [API implementation plan](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md). They are recorded separately from the `litheFunctions` version in the “Protocol” column and from manifest capability versions. The methods of one API can arrive over several PRs, and adding a backward-compatible method does not bump the protocol version (see [Extending the host services](../contract/v1/README.md#extending-the-host-services) in the contract). The date and PR that first added each method are in the [protocol changelog](protocol-changelog.md#宿主方法按-api-编号) (Chinese only).
-- **The “Protocol” column** is the `litheFunctions` version the method belongs to, and is 0 for every method today. Apart from `getCapabilities`, `subscriptions/dispose`, `workspace/listContexts`, `credentials/*`, `run/stop`, and `functions/providers`, every method takes `context: {contextID, generation}`. `functions/*` is open only to a backend whose plugin declares at least one `calls` entry; the official SDKs all wrap `functions/providers` and `functions/invoke`.
+- **The “Protocol” column** is the `litheFunctions` version the method belongs to, and is 0 for every method today. Apart from `getCapabilities`, `subscriptions/dispose`, `workspace/listContexts`, `credentials/*`, `run/stop`, `functions/providers`, and `agents/*`, every method takes `context: {contextID, generation}`; `agents/*` names its session with `session` instead and is answered by Core, never reaching the host. `functions/*` is open only to a backend whose plugin declares at least one `calls` entry; the official SDKs all wrap `functions/providers` and `functions/invoke`.
 - **The “Permission” column**: every permission requires the manifest to declare `backend` (`requires.backend` is 0), or installation refuses it. `functions/*` has no manifest permission; whether the manifest's `pluginFunctions` section lists the function under `calls` decides. Two more preconditions: `debug.start` also requires a declared `debugAdapters` entry, and `languageServer.request` can be declared only when a language server lists `requestMethods` or `forwardNotifications`.
 
 | API | Method | Purpose | Permission | Protocol |
@@ -297,6 +315,8 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-05 | `workspace/listContexts` | Lists the current workspace contexts with the change counter `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | Reads one workspace context | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | Lists the context's root folders, each with a `rootID` | `workspace.metadata` | 0 |
+| API-05 | `workspace/setDirectoryTypes` | Registers or replaces this plugin session's contributed directory types for the context (up to 32; `id` starts with `plugin.`) | `workspace.directoryMarks` | 0 |
+| API-05 | `workspace/setDirectoryMarks` | Registers or replaces this plugin session's dynamic directory marks and optional colors for the context (up to 500); precedence sits below user/shared rules and above glob/VCS | `workspace.directoryMarks` | 0 |
 | API-06 | `workspace/readDirectory` | Lists directory entries page by page; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
 | API-06 | `workspace/stat` | Reads the kind, size, and modification time of a file or directory; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
 | API-06 | `workspace/readFile` | Reads a file from disk as text or base64, truncated past the limit; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
@@ -365,8 +385,11 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-35 | `functions/invoke` | Calls a function another plugin exports, relayed by Core; can carry `parentOperationID` to name the call chain it belongs to, and returns `{value}` | No manifest permission; the function must be declared in `pluginFunctions.calls` | 0 |
 | API-38 | `network/request` | Send a bounded HTTP request with host proxy policy | `network.request` | 0 |
 | API-40 | `workspace/getHostPaths` | Gives the absolute paths `hostPath` of a remote context's root folders on the remote host, optionally for the roots `rootIDs` names, in that order; used only in the arguments, working directories, and language server or debugger configuration of what runs on that host; a local context gets `plugin.host.authorityUnsupported` | `workspace.metadata`, as a method grant of its own (the service grant alone gets `permissionDenied`) | 0 |
+| API-45 | `agents/write` | Writes the standard input of the CLI in one of this plugin's native sessions: 1–256 lines of at most 16 MiB together, without line breaks, which Core adds; answered by Core | `agents.native`, as a method grant of its own | 0 |
+| API-45 | `agents/report` | Reports the events of one of this plugin's native sessions (session, message, tool call, plan, permission request, usage, rate limits, turn end, notice): 1–256, checked together, so when one is refused none applies; answered by Core | `agents.native`, as a method grant of its own | 0 |
+| API-45 | `agents/usage` | Sums the usage of the agents whose records the user enabled, by day, agent, or model, with the latest quota windows; only numbers and model names, never conversation text, titles, session IDs, or directories; answered by Core | `agents.usage.read`, as a method grant of its own | 0 |
 
-Shortcut import providers also have two methods, `lithe/host/keymapImport/listInputs` and `lithe/host/keymapImport/readChunk`. They belong to the `litheKeymapImport` protocol, outside API-01–44; see [Shortcut import](domains/keymap-import.md).
+Shortcut import providers also have two methods, `lithe/host/keymapImport/listInputs` and `lithe/host/keymapImport/readChunk`. They belong to the `litheKeymapImport` protocol, outside API-01–45; see [Shortcut import](domains/keymap-import.md).
 
 Notifications the host sends to a backend (the backend answers none), also prefixed `lithe/host/`:
 
@@ -378,6 +401,12 @@ Notifications the host sends to a backend (the backend answers none), also prefi
 | API-23 | `run/didExit` | A run the backend started with `run/start` ended, with `exitCode` or `signal` (neither when the host lost the process); sent once per run | `run.start` |
 | API-25 | `languageServer/didChangeState` | The state of one of this plugin's language servers changed (`starting`, `running`, `stopped`, `crashed`), with `generation` | `languageServer.request` |
 | API-25 | `languageServer/didReceiveNotification` | Forwards a notification the server sent and `forwardNotifications` lists; past `limits.notificationBytes` it is delivered once with `truncated: true` and without `params` | `languageServer.request` |
+| API-45 | `agents/didStart` | Core started a native session for this plugin, with `session`, `agentID`, `cwd`, and `resume` when it continues one | `agents.native` |
+| API-45 | `agents/didOutput` | Complete lines of the CLI's standard output, in order; at most 64 lines or 4 MiB per notification | `agents.native` |
+| API-45 | `agents/didPrompt` | The user sent a prompt in the session, starting the new turn `turn`, with the prompt text | `agents.native` |
+| API-45 | `agents/didCancel` | The user cancelled the active turn | `agents.native` |
+| API-45 | `agents/didDecidePermission` | The user answered a permission request with `option`; the backend relays it to the CLI and decides nothing itself | `agents.native` |
+| API-45 | `agents/didExit` | The CLI process exited, with `exitCode` when there is one; not sent when the session ended because the backend did | `agents.native` |
 
 ### Limits
 
@@ -401,6 +430,11 @@ Notifications the host sends to a backend (the backend answers none), also prefi
 | `debug/start` | `configuration` up to 256 KiB |
 | Content providers | Provided content up to 1 MiB; the host waits 30 seconds |
 | `functions/invoke` | `timeoutMilliseconds` defaults to 60000 ms, capped at 600000 ms; `parentOperationID` is 1–128 bytes |
+| `agents/write` | 1–256 lines, 16 MiB together; at most 64 writes waiting for the CLI |
+| `agents/report` | 1–256 events; labels and IDs 1 byte to 1 KiB, texts at most 1 MiB; at most 16 pending permission requests |
+| `agents/didOutput` | At most 64 lines or 4 MiB per notification; a single line over 16 MiB is dropped |
+| `agents/usage` | 30 days by default, at most 366 days |
+| Agent native launch function | `timeoutMilliseconds` 1000–120000 ms, default 15000 |
 
 For failure codes and how to handle them, see the contract's [Outcomes and error codes](../contract/v1/README.md#outcomes-and-error-codes) and the [host failure table](../contract/v1/README.md#workspace-contexts-and-capability-discovery). Cancellation or timeout **does not promise rollback**: an edit may already have taken effect, so do not replay it automatically.
 

@@ -58,6 +58,8 @@ export const HOST_METHODS = Object.freeze({
   clipboardReadText: 'lithe/host/clipboard/readText',
   clipboardWriteText: 'lithe/host/clipboard/writeText',
   workspaceReveal: 'lithe/host/workspace/reveal',
+  workspaceSetDirectoryTypes: 'lithe/host/workspace/setDirectoryTypes',
+  workspaceSetDirectoryMarks: 'lithe/host/workspace/setDirectoryMarks',
   networkRequest: 'lithe/host/network/request',
 
   credentialsGet: 'lithe/host/credentials/get',
@@ -105,6 +107,9 @@ export const HOST_METHODS = Object.freeze({
   terminalOnExit: 'lithe/host/terminal/onExit',
   functionsProviders: 'lithe/host/functions/providers',
   functionsInvoke: 'lithe/host/functions/invoke',
+  agentsWrite: 'lithe/host/agents/write',
+  agentsReport: 'lithe/host/agents/report',
+  agentsUsage: 'lithe/host/agents/usage',
 });
 
 /** Host-to-backend notifications. */
@@ -112,6 +117,16 @@ export const HOST_NOTIFICATIONS = Object.freeze({
   didChangeContexts: 'lithe/host/workspace/didChangeContexts',
   subscriptionNotify: 'lithe/host/subscriptions/notify',
   commandDidRun: 'lithe/host/commands/didRun',
+});
+
+/** Native agent session notifications (plan API-45); see `onAgentSessions`. */
+export const AGENT_NOTIFICATIONS = Object.freeze({
+  didStart: 'lithe/host/agents/didStart',
+  didOutput: 'lithe/host/agents/didOutput',
+  didPrompt: 'lithe/host/agents/didPrompt',
+  didCancel: 'lithe/host/agents/didCancel',
+  didDecidePermission: 'lithe/host/agents/didDecidePermission',
+  didExit: 'lithe/host/agents/didExit',
 });
 
 /**

@@ -420,6 +420,8 @@ public final class Host {
     public final class Workspace {
         /** Reveal a saved resource in the file manager. Permission workspace.reveal. */
         public CompletableFuture<Map<String,Object>> reveal(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_WORKSPACE_REVEAL,context,params);}
+        public CompletableFuture<Map<String,Object>> setDirectoryTypes(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_WORKSPACE_SET_DIRECTORY_TYPES,context,params);}
+        public CompletableFuture<Map<String,Object>> setDirectoryMarks(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_WORKSPACE_SET_DIRECTORY_MARKS,context,params);}
 
         private Workspace() {}
 
@@ -1014,6 +1016,49 @@ public final class Host {
         /** Write system clipboard text. Permission clipboard.write. */
         public CompletableFuture<Map<String,Object>> writeText(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_CLIPBOARD_WRITE_TEXT,context,params);}
     }
+    /**
+     * Native agent sessions and agent usage totals (plan API-45). Core answers
+     * them; {@code write} and {@code report} need {@code agents.native},
+     * {@code usage} needs {@code agents.usage.read}.
+     */
+    public Agents agents() {
+        return new Agents();
+    }
+
+    public final class Agents {
+        /** Writes 1-256 lines, without line breaks, to the standard input of {@code session}'s CLI. */
+        public CompletableFuture<Void> write(String session, List<String> lines) {
+            return sessionRequest(Protocol.HOST_AGENTS_WRITE, session, "lines", lines);
+        }
+
+        /** Reports 1-256 session events of {@code session}; one refused event refuses them all. */
+        public CompletableFuture<Void> report(String session, List<?> events) {
+            return sessionRequest(Protocol.HOST_AGENTS_REPORT, session, "events", events);
+        }
+
+        /**
+         * {@code { sinceMs, untilMs, summaries, rateLimits }} for
+         * {@code { groupBy, sinceMs?, untilMs?, utcOffsetSeconds? }}.
+         */
+        public CompletableFuture<Map<String, Object>> usage(Map<String, ?> params) {
+            Object message = params == null ? new LinkedHashMap<String, Object>() : params;
+            return channel.request(Protocol.HOST_AGENTS_USAGE, message, scope).thenApply(result -> {
+                if (!(result instanceof Map)) {
+                    throw new PluginSdkError("sdk.host.invalidResult",
+                            Protocol.HOST_AGENTS_USAGE + " answered with something other than an object.");
+                }
+                return Json.object(result);
+            });
+        }
+
+        private CompletableFuture<Void> sessionRequest(String method, String session, String key, List<?> values) {
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("session", session);
+            message.put(key, values);
+            return channel.request(method, message, scope).thenApply(result -> null);
+        }
+    }
+
     /** Native network services. */
     public Network network() {return new Network();}
     public final class Network {

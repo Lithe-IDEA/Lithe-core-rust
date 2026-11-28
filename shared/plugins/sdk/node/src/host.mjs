@@ -280,6 +280,8 @@ export function createHost(channel, callSignal, parentOperationId) {
     }),
     workspace: Object.freeze({
       reveal: scoped(HOST_METHODS.workspaceReveal),
+      setDirectoryTypes: scoped(HOST_METHODS.workspaceSetDirectoryTypes),
+      setDirectoryMarks: scoped(HOST_METHODS.workspaceSetDirectoryMarks),
 
       listContexts: async (options) => request(HOST_METHODS.workspaceListContexts, {}, options),
       getContext: async (context, options) =>
@@ -309,6 +311,28 @@ export function createHost(channel, callSignal, parentOperationId) {
       rename: scoped(HOST_METHODS.workspaceRename),
       copy: scoped(HOST_METHODS.workspaceCopy),
       trash: scoped(HOST_METHODS.workspaceTrash),
+    }),
+    /**
+     * Native agent sessions and usage totals (plan API-45). Core answers it;
+     * `write` and `report` need `agents.native`, `usage` `agents.usage.read`.
+     */
+    agents: Object.freeze({
+      /** Writes 1-256 lines, without line breaks, to the standard input of `session`'s CLI. */
+      write: async (session, lines, options) => {
+        await request(HOST_METHODS.agentsWrite, { session, lines }, options);
+      },
+      /** Reports 1-256 events of `session`; one refused event refuses them all. */
+      report: async (session, events, options) => {
+        await request(HOST_METHODS.agentsReport, { session, events }, options);
+      },
+      /** `{ sinceMs, untilMs, summaries, rateLimits }` for `{ groupBy, sinceMs?, untilMs?, utcOffsetSeconds? }`. */
+      usage: async (params, options) => {
+        const result = await request(HOST_METHODS.agentsUsage, params, options);
+        if (typeof result !== 'object' || result === null || Array.isArray(result)) {
+          throw new PluginSdkError('sdk.host.invalidResult', `${HOST_METHODS.agentsUsage} answered with something other than an object.`);
+        }
+        return result;
+      },
     }),
     functions: Object.freeze({
       providers: async (functionID, options) => {

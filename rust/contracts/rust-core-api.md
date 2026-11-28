@@ -480,6 +480,22 @@ or removing a command fails until the table changes in the same commit.
 | `ai.pullRequest.decode` | Decode a strict pull request title and description |
 | `ai.inlineEdit.plan` | Plan a credential-free inline edit request |
 | `ai.inlineEdit.decode` | Decode the replacement text of an inline edit response |
+| `agents.configure` | Load the agents enabled plugins declare, with the permissions the user granted |
+| `agents.catalog` | List the configured agents |
+| `agents.sessions` | List the live agent sessions |
+| `agents.start` | Start a native agent session the user asked for |
+| `agents.prompt` | Send the user's prompt to a live agent session |
+| `agents.cancel` | Ask the agent backend to cancel the turn in progress |
+| `agents.respondPermission` | Answer a pending agent permission request |
+| `agents.close` | End a live agent session |
+| `agents.waitEvents` | Wait, bounded, for agent session events after a sequence |
+| `agentSessions.configure` | Open the agent session record cache |
+| `agentSessions.sync` | Read one agent's changed session files through its plugin |
+| `agentSessions.forget` | Drop one agent's cached session records |
+| `agentSessions.list` | List recorded agent sessions |
+| `agentSessions.search` | Search recorded agent session text |
+| `agentSessions.read` | Read one recorded range as messages |
+| `agentSessions.stats` | Sum recorded agent usage with the latest rate limits |
 | `plugins.declarative.validate` | Validate and normalize a declarative plugin manifest |
 | `plugins.ui.applyResult` | Check a backend result for a plugin view and return the whole view to draw |
 | `plugins.web.open` | Register a plugin page for a web tool window |
@@ -628,8 +644,9 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.renameEntry` | Rename one entry to a new path of the same root without replacing anything; a link is renamed as a link |
 | `workspace.copyEntry` | Copy one entry, a directory with everything in it, to a new path of the same root without replacing anything; links stay links |
 | `workspace.resolveEntry` | Name one existing entry below a workspace root without following it |
-| `workspace.reduceDirectoryAction` | Apply "set role", "exclude" or "cancel exclusion" to a root's persisted directory rules and return the complete state to persist |
+| `workspace.reduceDirectoryAction` | Apply role, custom type, color override, exclusion, clear mark or cancel exclusion to a root's persisted directory rules and return the complete state to persist |
 | `workspace.relocateDirectoryRules` | Move (or drop, after a delete) the directory rule keys of a renamed, moved or deleted subtree, optionally into another workspace root's rules |
+| `workspace.resolveDirectoryPresentation` | Resolve deterministic per-path presentation (icon, color, background tint, tag, source, exclusion) and manual indexing exclusions across user rules, shared rules, plugin-contributed types and marks, glob matches and Git ignores |
 | `workspace.repositories` | Discover deterministic Git repository roots for an opened workspace |
 | `workspace.recentProjects.reduce` | Apply one history mutation or compute a recent project filter projection |
 | `workspace.searchIndex.warm` | Build or reuses the workspace search index |
@@ -723,6 +740,8 @@ or removing a command fails until the table changes in the same commit.
 | `editor.lineEdit` | Apply a deterministic line-level text transform and return the replacement plus selection to restore |
 | `editor.copyReferenceLocation` | Format a one-based line reference from normalized document symbols; fall back to a file path when no containing symbol exists |
 | `editor.find` | Find text or plans bounded replacements in a borrowed document |
+| `editor.renderDocComment` | Parse one confirmed documentation comment slice (Javadoc-HTML, Markdown-HTML, or HTML) into bounded native document IR |
+| `editor.renderHoverDoc` | Parse one hover payload (`plaintext` or Markdown with embedded HTML) into bounded native document IR |
 | `editor.preferences.resolve` | Resolve persisted editor presentation preferences |
 | `editor.rainbowBrackets` | Match bounded structural bracket tokens and assign their nesting depths |
 | `editor.rainbowVariables` | Assign stable palette values to bounded variable tokens |
@@ -7634,14 +7653,34 @@ and releases only the last holder; window destruction also revokes late registra
 
 `workspace.reduceDirectoryAction` takes `{ path, action, caseInsensitive?, rules }`, where
 `path` is workspace-relative (`.` is the root), `action` is `{ kind: "setRole", role }`,
-`{ kind: "exclude" }` or `{ kind: "cancelExclusion" }`, and `rules` is the root's persisted
-`{ marks, includedDirectories, previousRoles }`. It returns `{ changed, rules }`; hosts persist
-`rules` verbatim and skip the write when `changed` is false. Excluding remembers the replaced role in
-`previousRoles` and canceling a manual exclusion restores it. `workspace.relocateDirectoryRules`
-takes `{ source, destination?, caseInsensitive?, rules, target? }` and returns `{ rules, target }`:
-keys at or below `source` leave `rules`, reappear under `destination` (in `target` for a move across
-workspace roots) and are dropped when there is no destination. Request and response pairs are pinned
-by `rust/fixtures/workspace/directory-rules-v1.json`.
+`{ kind: "exclude" }`, `{ kind: "cancelExclusion" }`, `{ kind: "clearMark" }`,
+`{ kind: "setColor", color }`, `{ kind: "upsertCustomType", directoryType }` or
+`{ kind: "deleteCustomType", id }`, and `rules` is the root's persisted
+`{ marks, includedDirectories, previousRoles, customTypes?, colors? }`. Built-in roles are
+`plain`, `sources`, `tests`, `resources`, `testResources`, `generated`, `excluded`, `module`,
+and `package`; `setRole` also accepts any `custom.*` ID defined in `customTypes` and any
+well-formed `plugin.*` ID, which a plugin may contribute later or never. It returns
+`{ changed, rules }`; hosts persist `rules` verbatim and skip the write when `changed` is false.
+Excluding remembers the replaced role in `previousRoles` and canceling a manual exclusion
+restores it. `workspace.relocateDirectoryRules` takes
+`{ source, destination?, caseInsensitive?, rules, target? }` and returns `{ rules, target }`:
+keys at or below `source` (including `colors`) leave `rules`, reappear under `destination`
+(in `target` for a move across workspace roots) and are dropped when there is no destination.
+`workspace.resolveDirectoryPresentation` takes
+`{ rules, sharedRules?, pluginTypes?, pluginMarks?, gitExcluded?, caseInsensitive?, paths? }`
+and returns `{ entries, manualExcludedDirectories }`, merging layers in order
+`user > shared > plugin > glob > vcs` with ancestor background tint and exclusion inheritance.
+`pluginTypes` holds at most 256 `{ pluginId, id, name, tag?, icon, color, tintBg?, tintText?,
+inheritBg?, excludeIndexing?, readOnlyHint?, matchGlob? }` entries whose `id` starts with
+`plugin.`; `pluginMarks` holds `{ pluginId, path, role, color? }` entries whose `role` is a
+built-in role or a `plugin.*` ID. Both are what live plugin sessions registered through
+`workspace/setDirectoryTypes` and `workspace/setDirectoryMarks`; Core never persists them.
+When two plugins contribute the same type ID or path, the plugin ID that sorts first wins.
+Each entry carries `pluginId` when its role or type came from a plugin. `paths` may be omitted
+or empty, but not `null`: `manualExcludedDirectories` still lists every explicitly marked
+directory whose effective role excludes indexing, and adds glob-matched directories only for
+the `paths` given. Request and response pairs, including the plugin layers, are pinned by
+`rust/fixtures/workspace/directory-rules-v1.json`.
 
 `workspace.planDuplicate` takes `{ name, isDirectory, existing?, caseInsensitive? }` and returns
 `{ name }`; `workspace.planPaste` takes `{ items: [{ name, isDirectory }], existing?, caseInsensitive? }`
@@ -8740,7 +8779,12 @@ replacement fails atomically. Invalid requests return `invalid_request` with sta
 `source_too_large`, `source_too_large_or_invalid`, `replacement_too_large`, `too_many_matches`.
 Source, query and replacement are never included in errors or diagnostic logs.
 
+`editor.renderDocComment` executes through `lithe_core_execute_document_json(request, bytes, length)` (or inline `payload.source` for fixtures). Payload fields: `shellKind` (`block-star`, `line-slash`, `raw`), `dialect` (`javadoc-html`, `markdown-html`, `html`, `markdown`), and optional `language`. Core strips the comment shell according to dialect, preserves protected inline tags (`{@code}`, `{@literal}`, `{@link}`, `{@linkplain}`) across HTML5 fragment parsing via a bounded `html5ever` `TreeSink`, and returns `{ fallbackToSource, fallbackReason?, blocks, anchors }`. Exceeding input (64 KiB), DOM node (2048), depth (16), text (128 KiB), or IR budgets, or failing slot fidelity checks, returns `fallbackToSource: true` with a stable `fallbackReason` so the host keeps showing raw source.
+
+`editor.renderHoverDoc` parses a hover payload (`isMarkdown`, optional `language`, and borrowed bytes or `contents`) into the same structured native IR. Plaintext (`isMarkdown: false`) is returned verbatim as a single code block without HTML or Markdown interpretation. Markdown (`isMarkdown: true`) recursively expands Comrak container and inline nodes while escaping text nodes, protects code spans and code blocks in opaque slots, merges embedded raw HTML via the bounded `html5ever` `TreeSink`, and falls back directly from the unmodified Comrak AST if a budget or fidelity check fails. Shared vectors: `rust/fixtures/editor/doc-render-v1.json`.
+
 `editor.preferences.resolve` accepts optional `lineNumbers`, `whitespace`, `inlayHints`,
+`renderDocComments`, `renderDocCommentsInReadOnly`,
 `indentGuides`, `rainbowIndentGuides`,
 `cursorStyle` (`line`, `block`, `underline`), `cursorBlink`, `autoSaveDelayMilliseconds`,
 `rainbowBrackets`, `rainbowVariables`, `rainbowLightColors` and

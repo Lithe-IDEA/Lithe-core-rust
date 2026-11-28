@@ -208,6 +208,7 @@ fallback and no plugin-owned file writer.
 | `handle.FunctionIDs()`, `handle.FunctionsVersion()` | What the backend serves, and `0, true` when the host offered `litheFunctions`. |
 | `backend.OnCommand(id, handler)` | Runs `func(commandID string, context *WorkspaceContext) error` when the user runs one of the plugin's commands. |
 | `backend.OnContextsChanged(handler)`, `backend.OnHostNotification(method, handler)` | Handle `lithe/host/workspace/didChangeContexts` and any other `lithe/host/*` notification a later host adds. |
+| `backend.OnAgentSessions(start)` | Translates the native sessions of the plugin's agents; see [Native agent sessions](#native-agent-sessions). |
 | `handle.Host()`, `call.Host()` | The [host services](#host-services). `handle.Host()` is bound to no call. |
 | `handle.Credentials()`, `call.Credentials()` | Shorthand for `Host().Credentials()`. |
 | `lithe.NewPluginError(code, message)` | A failure meant for your own UI. |
@@ -277,6 +278,7 @@ must(backend.OnCommand("db.refresh", func(_ string, workspace *lithe.WorkspaceCo
 | `Documents().Save`, `.SaveAs`, `.Close`; `Workspace().Create`, `.Rename`, `.Copy`, `.Trash` | Saves, closes, and file changes, with the `documents.save` and `workspace.files.write` permissions. Nothing is overwritten, discarded, or deleted permanently; see [saving documents and changing files](../../contract/v1/README.md#saving-documents-and-changing-files). |
 | `Preview().OpenHTML`, `Browser().OpenExternal`, `Window().ShowInformation`, `.ShowWarning`, `.ShowError` | Preview, browser, and messages. |
 | `Terminal().Create`, `.Show`, `.Close`, `.Reopen`, `.Dispose`, `.OnExit` | Native terminals; see [Native terminal API](#native-terminal-api). |
+| `Agents().Write(session, lines)`, `.Report(session, events)`, `.Usage(params)` | Native agent sessions and usage totals; see [Native agent sessions](#native-agent-sessions). |
 | `Functions().Providers(functionID)`, `.Invoke(context, call)` | The plugins that export a function, and a call to one of them; see [Calling other plugins](#calling-other-plugins). |
 | `Request(method, params)`, `Subscribe(method, params)` | Any `lithe/host/*` method, including ones a later host adds. |
 | `Subscriptions().Dispose(id)` | Ends a subscription; `Subscription.Dispose()` does the same. |
@@ -552,6 +554,89 @@ reopen with bounded display history, disposal and exit subscriptions. They are
 host methods discovered through `Capabilities()`; they require a host that
 offers them and the `terminal.create` permission. See
 [the native terminal guide](../../guides/native-terminals.md).
+
+## Native agent sessions
+
+A plugin whose [agent](../../contract/v1/README.md#agents) declares `native`
+(plan API-45) translates between the agent CLI's own protocol and Lithe's
+[session events](../../contract/v1/README.md#native-sessions). Core starts the
+CLI with the command line the `native` function answered; the backend only
+reads the lines the CLI writes, reports events, and writes the CLI's standard
+input. It never sees the CLI's environment or credentials.
+
+The example below is for a fictional CLI that writes JSON lines
+`{"type":"text","text":…}` and `{"type":"done"}` and reads `{"prompt":…}`.
+
+```go
+type translator struct {
+	lithe.AgentSessionBase // empty Cancel and Exited
+	session *lithe.AgentSessionHandle
+	turn    uint64
+}
+
+func (t *translator) Prompt(turn uint64, text string) error {
+	t.turn = turn
+	line, _ := json.Marshal(map[string]any{"prompt": text})
+	return t.session.Write([]string{string(line)})
+}
+
+func (t *translator) Output(lines []string) error {
+	var events []any
+	for _, raw := range lines {
+		var line struct{ Type, Text string }
+		if json.Unmarshal([]byte(raw), &line) != nil {
+			continue
+		}
+		switch line.Type {
+		case "text":
+			events = append(events, map[string]any{"kind": "message", "turn": t.turn, "role": "assistant",
+				"messageID": fmt.Sprintf("reply-%d", t.turn), "text": line.Text, "delta": true})
+		case "done":
+			events = append(events, map[string]any{"kind": "turnEnded", "turn": t.turn, "reason": "completed"})
+		}
+	}
+	if len(events) == 0 {
+		return nil
+	}
+	return t.session.Report(events)
+}
+
+func (t *translator) DecidePermission(turn uint64, permission, option string) error {
+	line, _ := json.Marshal(map[string]any{"permission": permission, "option": option})
+	return t.session.Write([]string{string(line)})
+}
+
+func main() {
+	backend := lithe.NewBackend("example-agent")
+	backend.OnAgentSessions(func(start lithe.AgentSessionStart, session *lithe.AgentSessionHandle) (lithe.AgentSession, error) {
+		return &translator{session: session}, nil
+	})
+	os.Exit(backend.Listen())
+}
+```
+
+`AgentSessionStart` carries `Session`, `AgentID`, `Cwd` and `Resume` (the
+CLI's own session ID when the user resumes one, or nil). Embed
+`AgentSessionBase` for empty `Cancel` and `Exited`. `Host().Agents()` offers
+the same `Write` and `Report` for any session ID, and `Usage(params)` for
+usage totals.
+
+- Each session has its own worker. `didStart` makes the session's handler;
+  the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`
+  and `didExit` then reach it one at a time, in the order Core sent them, so
+  a handler may wait for host requests. Other sessions keep running.
+- When making the handler fails, or a prompt fails, the SDK reports
+  `turnEnded` with reason `failed` for the turn and logs the failure. Other
+  failures are only logged; a cancellation is not logged.
+- A notification for a session that never started, or one that already
+  exited, is logged as `agent_session_unknown`. A started session without a
+  registration is logged as `agent_unhandled`.
+- The six `lithe/host/agents/did*` notifications reach only this API;
+  registering one with `OnHostNotification` fails with `sdk.method.reserved`.
+- `write` and `report` need `agents.native` and act only on the plugin's own
+  sessions. `usage` needs `agents.usage.read` and answers
+  `{sinceMs, untilMs, summaries, rateLimits}`: numbers and model names only,
+  never conversation text, titles, session IDs or directories.
 
 ## Testing
 

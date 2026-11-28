@@ -7,5 +7,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "files": ["build.mts", "host.mts", "keymap.mts", "view.mts"]
+  "files": ["agents.mts", "build.mts", "host.mts", "keymap.mts", "view.mts"]
 }

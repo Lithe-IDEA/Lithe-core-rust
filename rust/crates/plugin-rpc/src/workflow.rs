@@ -21,6 +21,28 @@ pub const OUTPUT_BYTES: usize = 512 * 1024;
 pub const OUTPUT_LINE_BYTES: usize = 16 * 1024;
 /// Maximum channels, progress handles and status items per backend session (shared with other limited host registrations).
 pub const RESOURCE_LIMIT: usize = 16;
+/// Maximum directory types one `workspace/setDirectoryTypes` call may register.
+pub const DIRECTORY_TYPES_LIMIT: usize = 32;
+/// Maximum directory marks one `workspace/setDirectoryMarks` call may register.
+pub const DIRECTORY_MARKS_LIMIT: usize = 500;
+/// Maximum UTF-8 bytes of one directory mark path.
+pub const DIRECTORY_MARK_PATH_BYTES: usize = 1024;
+/// Icon names a plugin directory type may use. They match the icons
+/// `workspace.resolveDirectoryPresentation` accepts, so a type the host
+/// stores never makes the resolver refuse the whole request.
+pub const DIRECTORY_TYPE_ICONS: [&str; 11] = [
+    "folder",
+    "sources",
+    "tests",
+    "resources",
+    "generated",
+    "excluded",
+    "star",
+    "book",
+    "archive",
+    "database",
+    "gear",
+];
 
 fn invalid() -> HostRequestRefusal {
     HostRequestRefusal {
@@ -124,6 +146,8 @@ pub fn check_params(method: &str, params: &Value) -> Result<(), HostRequestRefus
         "clipboard/readText" => &["context"],
         "clipboard/writeText" => &["context", "text"],
         "workspace/reveal" => &["context", "resource"],
+        "workspace/setDirectoryTypes" => &["context", "types"],
+        "workspace/setDirectoryMarks" => &["context", "marks"],
         "browser/openExternal" => &["context", "url", "resource", "unsaved"],
         "network/request" => &[
             "context",
@@ -252,6 +276,8 @@ pub fn check_params(method: &str, params: &Value) -> Result<(), HostRequestRefus
             p.contains_key("text") && text(p, "text", TEXT_BYTES, false, false)
         }
         "workspace/reveal" => p.get("resource").is_some_and(resource),
+        "workspace/setDirectoryTypes" => directory_types_valid(p),
+        "workspace/setDirectoryMarks" => directory_marks_valid(p),
         "browser/openExternal" => match (p.get("url"), p.get("resource")) {
             (Some(Value::String(url)), None) => !p.contains_key("unsaved") && http_address(url),
             (None, Some(value)) => {
@@ -270,6 +296,123 @@ pub fn check_params(method: &str, params: &Value) -> Result<(), HostRequestRefus
     } else {
         Err(invalid())
     }
+}
+
+fn directory_types_valid(p: &Map<String, Value>) -> bool {
+    let Some(items) = p.get("types").and_then(Value::as_array) else {
+        return false;
+    };
+    if items.len() > DIRECTORY_TYPES_LIMIT {
+        return false;
+    }
+    let mut ids = BTreeSet::new();
+    items.iter().all(|item| {
+        let Ok(obj) = object(
+            item,
+            &[
+                "id",
+                "name",
+                "tag",
+                "icon",
+                "color",
+                "tintBg",
+                "tintText",
+                "inheritBg",
+                "excludeIndexing",
+                "readOnlyHint",
+                "matchGlob",
+            ],
+        ) else {
+            return false;
+        };
+        let valid_id = obj
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| is_plugin_directory_type_id(id) && ids.insert(id.to_owned()));
+        let valid_icon = obj
+            .get("icon")
+            .and_then(Value::as_str)
+            .is_some_and(|icon| DIRECTORY_TYPE_ICONS.contains(&icon));
+        let valid_name = obj
+            .get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|name| !name.trim().is_empty());
+        let valid_color = obj
+            .get("color")
+            .and_then(Value::as_str)
+            .is_some_and(is_hex_color);
+        valid_id
+            && valid_name
+            && text(obj, "name", 64, true, true)
+            && text(obj, "tag", 24, false, true)
+            && valid_icon
+            && valid_color
+            && flag(obj, "tintBg")
+            && flag(obj, "tintText")
+            && flag(obj, "inheritBg")
+            && flag(obj, "excludeIndexing")
+            && flag(obj, "readOnlyHint")
+            && text(obj, "matchGlob", 256, false, true)
+    })
+}
+
+fn directory_marks_valid(p: &Map<String, Value>) -> bool {
+    let Some(items) = p.get("marks").and_then(Value::as_array) else {
+        return false;
+    };
+    if items.len() > DIRECTORY_MARKS_LIMIT {
+        return false;
+    }
+    let mut paths = BTreeSet::new();
+    items.iter().all(|item| {
+        let Ok(obj) = object(item, &["path", "role", "color"]) else {
+            return false;
+        };
+        let valid_path = obj.get("path").and_then(Value::as_str).is_some_and(|raw| {
+            !raw.is_empty()
+                && raw.len() <= DIRECTORY_MARK_PATH_BYTES
+                && !raw.starts_with('/')
+                && !raw.ends_with('/')
+                && !raw.contains(['\\', ':'])
+                && !raw.chars().any(char::is_control)
+                && raw
+                    .split('/')
+                    .all(|seg| !seg.is_empty() && seg != "." && seg != "..")
+                && paths.insert(raw.to_owned())
+        });
+        let valid_role = obj.get("role").and_then(Value::as_str).is_some_and(|role| {
+            matches!(
+                role,
+                "plain"
+                    | "sources"
+                    | "tests"
+                    | "resources"
+                    | "testResources"
+                    | "generated"
+                    | "excluded"
+            ) || is_plugin_directory_type_id(role)
+        });
+        let valid_color = obj
+            .get("color")
+            .is_none_or(|v| v.as_str().is_some_and(is_hex_color));
+        valid_path && valid_role && valid_color
+    })
+}
+
+fn is_plugin_directory_type_id(id: &str) -> bool {
+    let Some(rest) = id.strip_prefix("plugin.") else {
+        return false;
+    };
+    !rest.is_empty()
+        && id.len() <= 64
+        && rest.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')
+        })
+}
+
+fn is_hex_color(raw: &str) -> bool {
+    let bytes = raw.as_bytes();
+    bytes.len() == 7 && bytes[0] == b'#' && bytes[1..].iter().all(u8::is_ascii_hexdigit)
 }
 
 fn http_address(address: &str) -> bool {
@@ -687,6 +830,74 @@ mod tests {
         assert!(command(status.clone()).is_err());
         status["manifest"]["ui"]["commands"][0]["id"] = json!("run");
         assert!(command(status).is_ok());
+
+        let valid_types = json!({
+            "operation": "prepare",
+            "method": "workspace/setDirectoryTypes",
+            "params": {
+                "context": context,
+                "types": [{
+                    "id": "plugin.migrations",
+                    "name": "SQL Migrations",
+                    "tag": "migrations",
+                    "icon": "database",
+                    "color": "#0d9488",
+                    "tintBg": true
+                }]
+            }
+        });
+        assert!(command(valid_types).is_ok());
+
+        let invalid_type_id = json!({
+            "operation": "prepare",
+            "method": "workspace/setDirectoryTypes",
+            "params": {
+                "context": context,
+                "types": [{
+                    "id": "custom.notallowed",
+                    "name": "Bad",
+                    "icon": "folder",
+                    "color": "#0d9488"
+                }]
+            }
+        });
+        assert!(command(invalid_type_id).is_err());
+
+        let valid_marks = json!({
+            "operation": "prepare",
+            "method": "workspace/setDirectoryMarks",
+            "params": {
+                "context": context,
+                "marks": [
+                    {"path": "db/migrations", "role": "plugin.migrations"},
+                    {"path": "src/main", "role": "sources", "color": "#3b82f6"}
+                ]
+            }
+        });
+        assert!(command(valid_marks).is_ok());
+
+        let invalid_mark_path = json!({
+            "operation": "prepare",
+            "method": "workspace/setDirectoryMarks",
+            "params": {
+                "context": context,
+                "marks": [{"path": "../escape", "role": "sources"}]
+            }
+        });
+        assert!(command(invalid_mark_path).is_err());
+
+        // The resolver draws `module` and `package` as plain folders and refuses blank
+        // names and Windows drive separators, so the host must never store them.
+        for (field, value) in [("icon", json!("module")), ("name", json!("   "))] {
+            let mut item = json!({"id":"plugin.x","name":"X","icon":"folder","color":"#0d9488"});
+            item[field] = value;
+            let request = json!({"operation":"prepare","method":"workspace/setDirectoryTypes",
+                "params":{"context":context,"types":[item]}});
+            assert!(command(request).is_err(), "{field}");
+        }
+        let drive_path = json!({"operation":"prepare","method":"workspace/setDirectoryMarks",
+            "params":{"context":context,"marks":[{"path":"c:/x","role":"sources"}]}});
+        assert!(command(drive_path).is_err());
     }
 
     #[test]

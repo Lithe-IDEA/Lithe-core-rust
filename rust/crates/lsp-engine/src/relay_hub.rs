@@ -666,7 +666,7 @@ impl RuntimeSession {
     /// process when the write is still running after the session's request
     /// timeout, which releases a write blocked on a backend that stopped
     /// reading its stdin. `write` runs with no session lock held.
-    fn bounded_relay_write<T>(&self, write: impl FnOnce() -> T) -> T {
+    pub(super) fn bounded_relay_write<T>(&self, write: impl FnOnce() -> T) -> T {
         if let Ok(mut state) = self.lock_state() {
             state.relay_write_deadline = Some(Instant::now() + state.request_timeout);
         }

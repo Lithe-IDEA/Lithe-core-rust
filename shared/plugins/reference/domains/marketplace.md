@@ -12,7 +12,7 @@
 | 社区索引文件名 | 仓库根目录的 `lithe-plugin-index.json` |
 | Core 命令 | `plugins.marketplace.resolveSource`、`plugins.marketplace.validateIndex`、`plugins.marketplace.installReview` |
 | 能力 | 没有单独的能力；版本能不能装按 `pluginAPIVersion` 和 `requires` 判断，见[能力与协议版本](../capabilities-and-versions.md) |
-| API 编号 | 不在 API-01–44 内（安装和打包层面的契约），见 [API 总表](../api-catalog.md) |
+| API 编号 | 不在 API-01–45 内（安装和打包层面的契约），见 [API 总表](../api-catalog.md) |
 | 信任 | 见[包信任](package-trust.md)；社区包使用 `vendor.signatureRequirement: "none"` |
 | Lithe 桌面端 | 把自己声明的能力作为 `hostCapabilities` 传给 `validateIndex` 和 `installReview`，见[宿主现状](#宿主现状) |
 | 官方 SDK | 与 SDK 无关 |
@@ -151,7 +151,7 @@ A marketplace is a JSON index that lists plugins and the release archives of eac
 | Community index file name | `lithe-plugin-index.json` at the repository root |
 | Core commands | `plugins.marketplace.resolveSource`, `plugins.marketplace.validateIndex`, `plugins.marketplace.installReview` |
 | Capability | None of its own; whether a version can be installed follows its `pluginAPIVersion` and `requires`. See [capabilities and protocol versions](../capabilities-and-versions.md) |
-| API number | Outside API-01–44 (an installation and packaging contract); see the [API catalog](../api-catalog.md) |
+| API number | Outside API-01–45 (an installation and packaging contract); see the [API catalog](../api-catalog.md) |
 | Trust | See [Package trust](package-trust.md); community packages use `vendor.signatureRequirement: "none"` |
 | Lithe desktop | Passes the capabilities it declares as `hostCapabilities` to `validateIndex` and `installReview`. See [Host status](#host-status) |
 | Official SDKs | Not SDK-related |

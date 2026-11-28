@@ -8,6 +8,7 @@
 //! Contract: `contract/v1/README.md`, "Host services" and the host sections
 //! after it.
 
+use crate::agents::Agents;
 use crate::backend::{lock, Cancellation, Phase, Shared, State};
 use crate::error::{sdk_codes, SdkError};
 use crate::protocol::{
@@ -539,6 +540,12 @@ impl Host {
         Window { host: self.clone() }
     }
 
+    /// The `agents` service of native agent sessions and usage totals
+    /// (plan API-45); Core answers it, and each method needs its own grant.
+    pub fn agents(&self) -> Agents {
+        Agents { host: self.clone() }
+    }
+
     /// Calls to other plugins' functions through Core.
     pub fn functions(&self) -> Functions {
         Functions { host: self.clone() }
@@ -839,6 +846,26 @@ impl Workspace {
     /// Reveal a saved resource in the file manager. Permission `workspace.reveal`.
     pub fn reveal(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
         self.host.scoped(methods::WORKSPACE_REVEAL, context, params)
+    }
+
+    /// Registers or replaces this plugin session's contributed directory types for `context`.
+    pub fn set_directory_types(
+        &self,
+        context: &WorkspaceContext,
+        params: Value,
+    ) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::WORKSPACE_SET_DIRECTORY_TYPES, context, params)
+    }
+
+    /// Registers or replaces this plugin session's dynamic directory marks for `context`.
+    pub fn set_directory_marks(
+        &self,
+        context: &WorkspaceContext,
+        params: Value,
+    ) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::WORKSPACE_SET_DIRECTORY_MARKS, context, params)
     }
 
     /// `{ revision, contexts }`.

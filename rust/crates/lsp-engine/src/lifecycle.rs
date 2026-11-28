@@ -802,6 +802,7 @@ pub(crate) fn transition_locked(
 ) {
     state.lifecycle = lifecycle;
     relay_hub::observe_lifecycle(session, lifecycle);
+    agent_host::observe_lifecycle(session, lifecycle);
     let (id, fields) = EngineLog::SessionUpdated.fact(
         &session.log_identity,
         &json!({"state": lifecycle}),

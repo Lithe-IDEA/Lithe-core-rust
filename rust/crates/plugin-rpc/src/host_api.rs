@@ -4,7 +4,7 @@
 //! method table and grant decisions stay with the same Core code that already
 //! validates backend requests, so a new method cannot widen an old grant.
 
-use crate::{capabilities_answer, HOST_METHODS, HOST_SERVICE_FUNCTIONS};
+use crate::{capabilities_answer, HOST_METHODS, HOST_SERVICE_AGENTS, HOST_SERVICE_FUNCTIONS};
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -30,7 +30,7 @@ pub fn describe_command(payload: Value) -> Result<Value, CoreError> {
                 Some(entry.service)
             };
             json!({"method":entry.method,"service":entry.service,"grant":grant,
-                "coreServed":entry.service == HOST_SERVICE_FUNCTIONS})
+                "coreServed":entry.service == HOST_SERVICE_FUNCTIONS || entry.service == HOST_SERVICE_AGENTS})
         })
         .collect();
     Ok(json!({"methods":methods}))
@@ -104,6 +104,11 @@ mod tests {
         );
         assert!(method("lithe/host/subscriptions/dispose")["grant"].is_null());
         assert_eq!(method("lithe/host/functions/invoke")["coreServed"], true);
+        assert_eq!(method("lithe/host/agents/write")["coreServed"], true);
+        assert_eq!(
+            method("lithe/host/agents/write")["grant"],
+            "lithe/host/agents/write"
+        );
     }
 
     #[test]

@@ -6,8 +6,11 @@ license = "Apache-2.0"
 description = "Deterministic editor commands: line edits and comment tokens, find, text edit plans, navigation input and history, preferences, recent files and recovery decisions"
 
 [dependencies]
+comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
+html5ever = "0.39.0"
 lithe-protocol = { path = "../protocol" }
 lithe-text = { path = "../text" }
+markup5ever = "0.39.0"
 regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }

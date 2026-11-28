@@ -14,6 +14,7 @@ use lithe_github::{NormalizeResponseRequest, ParseRemoteRequest, RequestPlanRequ
 use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use serde_json::json;
 
+mod agents;
 mod ai;
 mod build;
 mod debug;
@@ -46,7 +47,7 @@ pub(crate) fn execute_document_json(request: &str, document: Option<&str>) -> St
     })
 }
 
-/// Decode an agent management payload and run `operation` on it.
+/// Runs a plugin domain `operation` on its payload.
 /// Declarative plugin commands decode their own payloads so manifest content
 /// problems surface as `rejected` outcomes rather than Core failures.
 fn plugin_response(
@@ -192,6 +193,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }),
         ),
         CoreCommand::Ai(command) => ai::dispatch(command, id, parsed.payload),
+        CoreCommand::Agents(command) => agents::dispatch(command, id, parsed.payload),
         CoreCommand::Plugins(command) => plugins::dispatch(command, id, parsed.payload),
         CoreCommand::Debug(command) => debug::dispatch(command, id, parsed.payload),
         CoreCommand::Keymap(command) => keymap::dispatch(command, id, parsed.payload),

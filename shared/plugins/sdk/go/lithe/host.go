@@ -1484,6 +1484,16 @@ func (w *Workspace) Reveal(context WorkspaceContext, params any) (json.RawMessag
 	return w.host.scoped(methodWorkspaceReveal, context, params)
 }
 
+// SetDirectoryTypes registers or replaces this plugin session's contributed directory types for context.
+func (w *Workspace) SetDirectoryTypes(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodWorkspaceSetDirectoryTypes, context, params)
+}
+
+// SetDirectoryMarks registers or replaces this plugin session's dynamic directory marks for context.
+func (w *Workspace) SetDirectoryMarks(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodWorkspaceSetDirectoryMarks, context, params)
+}
+
 // Network provides context-scoped network services.
 type Network struct{ host *Host }
 

@@ -213,6 +213,7 @@ stderr fallback and no plugin-owned file writer.
 | `backend.onCommand(commandID, handler)` | One of the plugin's commands ran; the handler gets `{ commandID, workspaceContext }`. |
 | `backend.onContextsChanged(handler)` | Workspace contexts opened, closed, or changed; the handler gets `{ revision }`. |
 | `backend.onHostNotification(method, handler)` | A `lithe/host/*` notification a later host adds. Unknown ones are ignored. |
+| `backend.onAgentSessions(start)` | Translates the native sessions of the plugin's agents; see [Native agent sessions](#native-agent-sessions). |
 | `backend.vcs(id, handlers, traits?)` | Implements the typed VCS requests; see [A VCS provider](#a-vcs-provider). `litheVcs` is answered only when the host offers it. |
 | `backend.function(id, handler)` | Declares a function offered in `initialize`. |
 | `backend.view(id, handler)` | Declares a view function; see [Plugin views](#plugin-views). |
@@ -293,6 +294,7 @@ backend.onCommand('db.refresh', async ({ workspaceContext }) => {
 | `documents.save`, `.saveAs`, `.close`; `workspace.create`, `.rename`, `.copy`, `.trash` | Saves, closes, and file changes, with the `documents.save` and `workspace.files.write` permissions. Nothing is overwritten, discarded, or deleted permanently; see [saving documents and changing files](../../contract/v1/README.md#saving-documents-and-changing-files). |
 | `preview.openHTML`, `browser.openExternal`, `window.showInformation`, `.showWarning`, `.showError` | Preview, browser, and messages. |
 | `functions.providers(functionID)` | The enabled plugins that export a function: `{ providers: [{ pluginID, version }] }`. See [Calling other plugins](#calling-other-plugins). |
+| `agents.write(session, lines)`, `.report(session, events)`, `.usage(params)` | Native agent sessions and usage totals; see [Native agent sessions](#native-agent-sessions). |
 | `functions.invoke(context, call)` | Calls one provider's exported function in a workspace context: `{ value }`. `call` is `{ pluginID, functionID, params?, timeoutMilliseconds?, parentOperationID? }`. |
 | `request(method, params?)`, `subscribe(method, params, onEvent?)` | Any `lithe/host/*` method, including ones a later host adds. |
 | `subscriptions.dispose(id)` | Ends a subscription; `Subscription.dispose()` does the same. |
@@ -554,6 +556,68 @@ The SDK includes wrappers for plugin-owned native terminal create/show/close,
 reopen with bounded display history, disposal and exit subscriptions. They
 require `terminal.create`. See
 [the native terminal guide](../../guides/native-terminals.md).
+
+## Native agent sessions
+
+A plugin whose [agent](../../contract/v1/README.md#agents) declares `native`
+(plan API-45) translates between the agent CLI's own protocol and Lithe's
+[session events](../../contract/v1/README.md#native-sessions). Core starts the
+CLI with the command line the `native` function answered; the backend only
+reads the lines the CLI writes, reports events, and writes the CLI's standard
+input. It never sees the CLI's environment or credentials.
+
+The example below is for a fictional CLI that writes JSON lines
+`{"type":"text","text":…}` and `{"type":"done"}` and reads `{"prompt":…}`.
+
+```js
+backend.onAgentSessions((start, session) => {
+  let turn = 0;
+  return {
+    async prompt(next, text) {
+      turn = next;
+      await session.write([JSON.stringify({ prompt: text })]);
+    },
+    async output(lines) {
+      const events = [];
+      for (const raw of lines) {
+        let line;
+        try { line = JSON.parse(raw); } catch { continue; }
+        if (line.type === 'text') {
+          events.push({ kind: 'message', turn, role: 'assistant', messageID: `reply-${turn}`, text: line.text, delta: true });
+        } else if (line.type === 'done') {
+          events.push({ kind: 'turnEnded', turn, reason: 'completed' });
+        }
+      }
+      if (events.length > 0) await session.report(events);
+    },
+    async decidePermission(_turn, permission, option) {
+      await session.write([JSON.stringify({ permission, option })]);
+    },
+  };
+});
+```
+
+`start` carries `session`, `agentID`, `cwd` and `resume` (the CLI's own
+session ID when the user resumes one). `cancel` and `exited` are optional.
+`backend.host.agents` offers the same `write` and `report` for any session
+ID, and `usage(params)` for usage totals.
+
+- Each session has its own worker. `didStart` makes the session's handler;
+  the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`
+  and `didExit` then reach it one at a time, in the order Core sent them, so
+  a handler may wait for host requests. Other sessions keep running.
+- When making the handler fails, or a prompt fails, the SDK reports
+  `turnEnded` with reason `failed` for the turn and logs the failure. Other
+  failures are only logged; a cancellation is not logged.
+- A notification for a session that never started, or one that already
+  exited, is logged as `agent_session_unknown`. A started session without a
+  registration is logged as `agent_unhandled`.
+- The six `lithe/host/agents/did*` notifications reach only this API;
+  registering one with `onHostNotification` fails with `sdk.method.reserved`.
+- `write` and `report` need `agents.native` and act only on the plugin's own
+  sessions. `usage` needs `agents.usage.read` and answers
+  `{sinceMs, untilMs, summaries, rateLimits}`: numbers and model names only,
+  never conversation text, titles, session IDs or directories.
 
 ## Testing
 

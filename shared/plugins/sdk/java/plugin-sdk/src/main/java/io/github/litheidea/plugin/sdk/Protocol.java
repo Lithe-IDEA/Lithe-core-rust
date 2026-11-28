@@ -106,6 +106,8 @@ public final class Protocol {
     public static final String HOST_CLIPBOARD_READ_TEXT = "lithe/host/clipboard/readText";
     public static final String HOST_CLIPBOARD_WRITE_TEXT = "lithe/host/clipboard/writeText";
     public static final String HOST_WORKSPACE_REVEAL = "lithe/host/workspace/reveal";
+    public static final String HOST_WORKSPACE_SET_DIRECTORY_TYPES = "lithe/host/workspace/setDirectoryTypes";
+    public static final String HOST_WORKSPACE_SET_DIRECTORY_MARKS = "lithe/host/workspace/setDirectoryMarks";
     public static final String HOST_NETWORK_REQUEST = "lithe/host/network/request";
     public static final String HOST_PREVIEW_OPEN_HTML = "lithe/host/preview/openHTML";
     public static final String HOST_BROWSER_OPEN_EXTERNAL = "lithe/host/browser/openExternal";
@@ -117,10 +119,21 @@ public final class Protocol {
     public static final String HOST_FUNCTIONS_PROVIDERS = "lithe/host/functions/providers";
     public static final String HOST_FUNCTIONS_INVOKE = "lithe/host/functions/invoke";
 
+    /** Native agent sessions and agent usage totals (plan API-45), which Core answers. */
+    public static final String HOST_AGENTS_WRITE = "lithe/host/agents/write";
+    public static final String HOST_AGENTS_REPORT = "lithe/host/agents/report";
+    public static final String HOST_AGENTS_USAGE = "lithe/host/agents/usage";
+
     /** Host-to-backend notifications. */
     public static final String HOST_DID_CHANGE_CONTEXTS = "lithe/host/workspace/didChangeContexts";
     public static final String HOST_SUBSCRIPTION_NOTIFY = "lithe/host/subscriptions/notify";
     public static final String HOST_COMMAND_DID_RUN = "lithe/host/commands/didRun";
+    public static final String HOST_AGENTS_DID_START = "lithe/host/agents/didStart";
+    public static final String HOST_AGENTS_DID_OUTPUT = "lithe/host/agents/didOutput";
+    public static final String HOST_AGENTS_DID_PROMPT = "lithe/host/agents/didPrompt";
+    public static final String HOST_AGENTS_DID_CANCEL = "lithe/host/agents/didCancel";
+    public static final String HOST_AGENTS_DID_DECIDE_PERMISSION = "lithe/host/agents/didDecidePermission";
+    public static final String HOST_AGENTS_DID_EXIT = "lithe/host/agents/didExit";
 
     /** JSON-RPC and LSP error codes the SDK answers with. */
     public static final int PARSE_ERROR = -32700;

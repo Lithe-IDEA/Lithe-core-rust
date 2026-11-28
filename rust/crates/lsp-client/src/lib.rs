@@ -19,5 +19,9 @@ pub use client::*;
 use lithe_plugin_model::capabilities::offered_versions;
 pub use types::*;
 
+/// Event kind of a backend's `lithe/host/agents/*` request (plan API-45),
+/// which the engine hands to Core's agent runtime instead of the host.
+pub const AGENT_HOST_REQUEST_EVENT: &str = "agentHostRequest";
+
 #[cfg(test)]
 mod tests;

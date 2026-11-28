@@ -127,6 +127,24 @@ impl Host {
         self.exit.recv_timeout(WAIT).expect("the backend to end")
     }
 
+    /// Ends the input stream and returns the backend's exit code with every
+    /// frame it sent that was not read yet. Its output closes once nothing
+    /// holds the session, so a test that kept a handle cannot use it.
+    pub fn finish(mut self) -> (i32, Vec<Value>) {
+        self.input = None;
+        let code = self.exit.recv_timeout(WAIT).expect("the backend to end");
+        let mut frames = Vec::new();
+        loop {
+            match self.frames.recv_timeout(WAIT) {
+                Ok(frame) => frames.push(frame),
+                Err(mpsc::RecvTimeoutError::Disconnected) => return (code, frames),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    panic!("the backend did not close its output in time")
+                }
+            }
+        }
+    }
+
     /// The next frame, if the backend sends one within `timeout`.
     pub fn next_within(&self, timeout: Duration) -> Option<Value> {
         self.frames.recv_timeout(timeout).ok()

@@ -31,6 +31,10 @@ pub(crate) enum NotificationParams {
     /// `{ context, serverID, generation, method, params? | truncated }`: a
     /// forwarded server notification, without params when too large.
     LanguageServerNotification,
+    /// A notification about one of the backend's agent sessions (plan
+    /// API-45). Only Core's agent runtime sends it, in session order; the
+    /// host may not, so `host_notification` refuses it.
+    Agent,
 }
 
 /// One row of the host-notification table.
@@ -75,6 +79,21 @@ const MAX_RUN_ID_BYTES: usize = 128;
 /// plugin-owned session has it; a command names only the plugin's own IDs.
 pub(crate) const HOST_SERVICE_COMMANDS: &str = "commands";
 
+/// The agent CLI of a session started (plan API-45). The agent-session
+/// notifications below are sent by Core's agent runtime, in session order, to
+/// the backend that translates the session.
+pub const AGENTS_DID_START: &str = "lithe/host/agents/didStart";
+/// Lines the agent CLI wrote to standard output, in order.
+pub const AGENTS_DID_OUTPUT: &str = "lithe/host/agents/didOutput";
+/// A prompt the user sent to the session.
+pub const AGENTS_DID_PROMPT: &str = "lithe/host/agents/didPrompt";
+/// The user cancelled a turn.
+pub const AGENTS_DID_CANCEL: &str = "lithe/host/agents/didCancel";
+/// The user answered a permission request the backend reported.
+pub const AGENTS_DID_DECIDE_PERMISSION: &str = "lithe/host/agents/didDecidePermission";
+/// The agent CLI exited.
+pub const AGENTS_DID_EXIT: &str = "lithe/host/agents/didExit";
+
 /// Every host-to-backend notification the host may send through
 /// `lsp.hostNotify`. A notification missing here never reaches a backend,
 /// so the host cannot use the channel to call into the backend's own
@@ -116,7 +135,52 @@ pub(crate) const HOST_NOTIFICATIONS: &[HostNotification] = &[
         grant: None,
         params: NotificationParams::LanguageServerNotification,
     },
+    // Listed so `getCapabilities` shows them; the host may not send them.
+    HostNotification {
+        method: AGENTS_DID_START,
+        service: HOST_SERVICE_AGENTS,
+        grant: Some(AGENTS_WRITE),
+        params: NotificationParams::Agent,
+    },
+    HostNotification {
+        method: AGENTS_DID_OUTPUT,
+        service: HOST_SERVICE_AGENTS,
+        grant: Some(AGENTS_WRITE),
+        params: NotificationParams::Agent,
+    },
+    HostNotification {
+        method: AGENTS_DID_PROMPT,
+        service: HOST_SERVICE_AGENTS,
+        grant: Some(AGENTS_WRITE),
+        params: NotificationParams::Agent,
+    },
+    HostNotification {
+        method: AGENTS_DID_CANCEL,
+        service: HOST_SERVICE_AGENTS,
+        grant: Some(AGENTS_WRITE),
+        params: NotificationParams::Agent,
+    },
+    HostNotification {
+        method: AGENTS_DID_DECIDE_PERMISSION,
+        service: HOST_SERVICE_AGENTS,
+        grant: Some(AGENTS_WRITE),
+        params: NotificationParams::Agent,
+    },
+    HostNotification {
+        method: AGENTS_DID_EXIT,
+        service: HOST_SERVICE_AGENTS,
+        grant: Some(AGENTS_WRITE),
+        params: NotificationParams::Agent,
+    },
 ];
+
+/// Whether `method` is one of the agent-session notifications only Core's
+/// agent runtime sends.
+pub fn is_agent_notification(method: &str) -> bool {
+    HOST_NOTIFICATIONS
+        .iter()
+        .any(|entry| entry.method == method && entry.params == NotificationParams::Agent)
+}
 
 /// Whether the session holds a service: its aggregate grant, or, for a
 /// service granted per method, any of its methods.
@@ -159,6 +223,13 @@ pub fn host_notification(
             codes::HOST_UNAVAILABLE,
         ));
     };
+    if entry.params == NotificationParams::Agent {
+        return Err(refusal(
+            ErrorCode::InvalidRequest,
+            "Only Core's agent runtime sends agent-session notifications.",
+            codes::HOST_UNAVAILABLE,
+        ));
+    }
     if !entry.admitted(granted) {
         return Err(refusal(
             ErrorCode::InvalidRequest,
@@ -229,6 +300,7 @@ pub fn host_notification(
                     .is_some_and(is_language_server_state)
                 && positive("generation")
         }
+        NotificationParams::Agent => false,
         NotificationParams::LanguageServerNotification => {
             let truncated = object.get("truncated");
             only(&[

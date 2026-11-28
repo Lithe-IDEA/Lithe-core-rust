@@ -1,0 +1,12 @@
+[package]
+name = "lithe-plugin-agents"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "agents[] of a plugin manifest (plan API-45): the agent CLIs a plugin drives, how Core starts them, and where their local session files are"
+
+[dependencies]
+globset = "0.4"
+lithe-plugin-model = { path = "../plugin-model" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

@@ -21,7 +21,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 
 以后的变化遵循契约的规则：
 
-- 先在 API-01–44 所属领域复用和兼容扩展。插件、语言服务器、构建工具等特有需求不得提升任何系统 API 版本；公共、非特有的变化也只有在兼容扩展无法安全表达时才可提出升版，见 [API PR 提交指南](../guides/plugin-api-pr-guide.zh-CN.md#3-api-版本怎么处理)。
+- 先在 API-01–45 所属领域复用和兼容扩展。插件、语言服务器、构建工具等特有需求不得提升任何系统 API 版本；公共、非特有的变化也只有在兼容扩展无法安全表达时才可提出升版，见 [API PR 提交指南](../guides/plugin-api-pr-guide.zh-CN.md#3-api-版本怎么处理)。
 - 确需引入新版本时，只涉及拥有公共变化的版本，清单段与所属协议保持一致；其他插件继续选择原来所需的已有版本，不回退或删除已有的 `1`、`2` 等版本。
 - 已发布的能力版本不改变含义，宿主一直支持它。
 - 插件只声明自己用到的能力，每个能力取能覆盖它用法的**最低**版本。没用到新内容就提高版本，只会让旧宿主装不上。
@@ -67,6 +67,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | `outputLinkMatchers` `0` | [`outputLinkMatchers[]`](../contract/v1/README.md#output-link-matchers)：插件声明的匹配规则让 Run 和测试控制台的输出出现链接；Core 负责匹配，`resolve` 函数在点击时才调用 | ✅ | ✅ | [语言](domains/languages.md) |
 | `projectGenerators` `0` | [`projectGenerators[]`](../contract/v1/README.md#project-generators)：新建项目窗口里的条目，含 [`tool` 字段](../contract/v1/README.md#tool-fields) | ✅ | ✅ | [项目生成器](domains/project-generators.md) |
 | `backend` `0` | [`backend`](../contract/v1/README.md#plugin-backend)：插件自己的长驻进程，带或不带页面启动，按权限提供宿主服务，说 `litheFunctions` | ✅ | ✅¹ | [插件后端与插件函数](domains/backend.md) |
+| `agents` `0` | [`agents[]`](../contract/v1/README.md#agents)：用户自己安装的 Agent CLI 的原生会话（后端翻译 CLI 自己的协议，Core 启动进程）、终端形式、更新命令和会话记录；权限 `agents.run`、`agents.native`、`agents.sessions.read`、`agents.usage.read`，激活事件 `onAgent:<id>`；`acp` 只校验、不运行 | ✅ | 待宿主接入 | [Agent](domains/agents.md) |
 | `toolDefinitions` `0` | `toolDefinitions[]`：[工具身份、布局、发现和四层候选](../contract/v1/toolchains/README.md) | ✅ | ✅¹ | [工具链](domains/toolchains.md) |
 | `toolDefinitions` `1` | 在 `0` 之上加：工具定义的 `category`（设置页「工具链」里的分组）和 `audience`（`plugin` 表示插件自用的运行时，单独放在最后一组），只影响显示位置 | ✅ | 未声明 | [Settings list](../contract/v1/toolchains/README.md#settings-list) |
 | `toolchainProviders` `0` | `toolchainProviders[]`：[提供者声明和按权限校验应答](../contract/v1/toolchains/README.md)；说 `litheToolchains` | ✅ | ✅ | [工具链](domains/toolchains.md) |
@@ -90,7 +91,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 
 | 版本 | 内容 | Core | Lithe 桌面端 | 详见 |
 | --- | --- | --- | --- | --- |
-| `litheFunctions` `0`（`backend`） | 插件函数：注册、撤回、调用、结果、进度、取消；宿主服务 `lithe/host/*`（凭据、工作区上下文与能力发现、宿主通知、公共文档/文件/窗口方法、插件自有原生终端、独立编辑器动作、编辑器语言功能 Provider、运行与调试会话、语言服务器方法、内容提供者）；跨插件调用 `functions/providers`、`functions/invoke`。提供给插件拥有的会话 | ✅ | ✅¹ | [Plugin functions](../contract/v1/README.md#plugin-functions) |
+| `litheFunctions` `0`（`backend`） | 插件函数：注册、撤回、调用、结果、进度、取消；宿主服务 `lithe/host/*`（凭据、工作区上下文与能力发现、宿主通知、公共文档/文件/窗口方法、插件自有原生终端、独立编辑器动作、编辑器语言功能 Provider、运行与调试会话、语言服务器方法、内容提供者，以及由 Core 回答的 Agent 原生会话 `agents/write`、`agents/report`、`agents/usage` 和 `agents/did*` 通知）；跨插件调用 `functions/providers`、`functions/invoke`。提供给插件拥有的会话 | ✅ | ✅¹ | [Plugin functions](../contract/v1/README.md#plugin-functions) |
 | `litheBuild` `0`（`buildProviders`） | `lithe/build/*`：模型与依赖、任务执行、测试执行与发现、运行准备、原生调试准备、只读模型输入、原生配置、内联测试报告、语义测试选择器、类型化运行选项、注册表连接调试。提供给构建提供者 | ✅ | ✅¹ | [Build providers](../contract/v1/README.md#build-providers) |
 | `litheBuild` `1`（`buildProviders`） | 在 `0` 之上加 `lithe/build/runEntrypoints`：按源文件找运行入口 | ✅ | ✅ | [Run entrypoints](../contract/v1/README.md#run-entrypoints-buildproviders-1) |
 | `litheVcs` `0`（`vcsProviders`） | VCS 提供者的能力和请求（`lithe/vcs/*`）。提供给 VCS 提供者 | ✅ | ✅¹ | [VCS providers](../contract/v1/README.md#vcs-providers) |
@@ -141,7 +142,7 @@ A capability version decides **whether a plugin installs**; a protocol version d
 
 Future changes follow the contract's rules:
 
-- Reuse and compatibly extend the appropriate API-01–44 domain first. A requirement specific to a plugin, language server, or build tool must not raise any system API version. Even a public, non-specific change may propose a new version only when compatible extensions cannot express it safely; see the [API PR guide (Chinese)](../guides/plugin-api-pr-guide.zh-CN.md#3-api-版本怎么处理).
+- Reuse and compatibly extend the appropriate API-01–45 domain first. A requirement specific to a plugin, language server, or build tool must not raise any system API version. Even a public, non-specific change may propose a new version only when compatible extensions cannot express it safely; see the [API PR guide (Chinese)](../guides/plugin-api-pr-guide.zh-CN.md#3-api-版本怎么处理).
 - A necessary new version affects only the owner of that public change, with its manifest section and protocol kept together. Other plugins retain the existing versions they need; existing `1`, `2`, or later versions are not reset or removed.
 - A released capability version never changes meaning, and hosts keep supporting it.
 - A plugin declares only the capabilities it uses, each at the **lowest** version that covers its use. Raising one without using what it adds only cuts off older hosts.
@@ -187,6 +188,7 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 | `outputLinkMatchers` `0` | [`outputLinkMatchers[]`](../contract/v1/README.md#output-link-matchers): plugin-declared patterns that turn Run and Test console output into links; Core does the matching, and the `resolve` function is called only on click | ✅ | ✅ | [Languages](domains/languages.md) |
 | `projectGenerators` `0` | [`projectGenerators[]`](../contract/v1/README.md#project-generators): entries of the New Project window, including [`tool` fields](../contract/v1/README.md#tool-fields) | ✅ | ✅ | [Project generators](domains/project-generators.md) |
 | `backend` `0` | [`backend`](../contract/v1/README.md#plugin-backend): the plugin's own long-lived process, started with or without a page, serving the host services its permissions grant and speaking `litheFunctions` | ✅ | ✅¹ | [Plugin backend and plugin functions](domains/backend.md) |
+| `agents` `0` | [`agents[]`](../contract/v1/README.md#agents): native sessions of agent CLIs the user installed (the backend translates the CLI's own protocol and Core starts the process), terminal forms, update commands, and session records; permissions `agents.run`, `agents.native`, `agents.sessions.read`, `agents.usage.read`, activation event `onAgent:<id>`; `acp` is validated but not run | ✅ | Pending host integration | [Agents](domains/agents.md) |
 | `toolDefinitions` `0` | `toolDefinitions[]`: [tool identities, layouts, discovery, and four-layer candidates](../contract/v1/toolchains/README.md) | ✅ | ✅¹ | [Toolchains](domains/toolchains.md) |
 | `toolDefinitions` `1` | Adds to `0`: a definition's `category` (its group in the settings page's Toolchains list) and `audience` (`plugin` for a runtime a plugin runs for itself, shown in its own last group); display placement only | ✅ | Not declared | [Settings list](../contract/v1/toolchains/README.md#settings-list) |
 | `toolchainProviders` `0` | `toolchainProviders[]`: [provider declarations and permission-bound answer validation](../contract/v1/toolchains/README.md); they speak `litheToolchains` | ✅ | ✅ | [Toolchains](domains/toolchains.md) |
@@ -210,7 +212,7 @@ These protocols are negotiated when a process starts and never appear in the man
 
 | Version | Content | Core | Lithe desktop | See |
 | --- | --- | --- | --- | --- |
-| `litheFunctions` `0` (`backend`) | Plugin functions: register, withdraw, invoke, results, progress, cancellation; the `lithe/host/*` host services (credentials, workspace contexts and capability discovery, host notifications, public document, file, and window methods, plugin-owned native terminals, independent editor actions, editor language-feature providers, run and debug sessions, language server methods, content providers); cross-plugin calls `functions/providers` and `functions/invoke`. Offered to plugin-owned sessions | ✅ | ✅¹ | [Plugin functions](../contract/v1/README.md#plugin-functions) |
+| `litheFunctions` `0` (`backend`) | Plugin functions: register, withdraw, invoke, results, progress, cancellation; the `lithe/host/*` host services (credentials, workspace contexts and capability discovery, host notifications, public document, file, and window methods, plugin-owned native terminals, independent editor actions, editor language-feature providers, run and debug sessions, language server methods, content providers, and the Core-answered agent native sessions `agents/write`, `agents/report`, `agents/usage`, and the `agents/did*` notifications); cross-plugin calls `functions/providers` and `functions/invoke`. Offered to plugin-owned sessions | ✅ | ✅¹ | [Plugin functions](../contract/v1/README.md#plugin-functions) |
 | `litheBuild` `0` (`buildProviders`) | `lithe/build/*`: model and dependencies, task execution, test execution and discovery, run preparation, native debug preparation, read-only model inputs, native configuration, inline test reports, semantic test selectors, typed run options, registry connection debugging. Offered to build providers | ✅ | ✅¹ | [Build providers](../contract/v1/README.md#build-providers) |
 | `litheBuild` `1` (`buildProviders`) | Adds `lithe/build/runEntrypoints` to `0`: the run entrypoints of a source file | ✅ | ✅ | [Run entrypoints](../contract/v1/README.md#run-entrypoints-buildproviders-1) |
 | `litheVcs` `0` (`vcsProviders`) | VCS provider capabilities and requests (`lithe/vcs/*`). Offered to VCS providers | ✅ | ✅¹ | [VCS providers](../contract/v1/README.md#vcs-providers) |

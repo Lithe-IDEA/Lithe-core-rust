@@ -1,0 +1,88 @@
+{
+  "description": "How an official SDK delivers the native-session notifications Core sends (contract README: Native sessions) and the agents host methods it sends. The notifications of one session reach the plugin's handler one at a time, in the order Core sent them, whatever other sessions do; a session's handler starts with didStart and ends with didExit. A test backend fails to start every session whose cwd is /work/broken and fails every prompt whose text is fail; for both the SDK reports turnEnded with reason failed for the turn, so the host does not wait for a turn no handler runs. Notifications of a session the SDK never started are ignored.",
+  "sessions": {
+    "notifications": [
+      { "method": "lithe/host/agents/didStart", "params": { "session": "agent-1", "agentID": "example", "cwd": "/work/orders" } },
+      { "method": "lithe/host/agents/didStart", "params": { "session": "agent-2", "agentID": "example", "cwd": "/work/orders", "resume": "previous-session" } },
+      { "method": "lithe/host/agents/didOutput", "params": { "session": "agent-1", "lines": ["one", "two"] } },
+      { "method": "lithe/host/agents/didPrompt", "params": { "session": "agent-1", "turn": 1, "text": "hello" } },
+      { "method": "lithe/host/agents/didOutput", "params": { "session": "agent-2", "lines": ["other"] } },
+      { "method": "lithe/host/agents/didOutput", "params": { "session": "agent-1", "lines": ["three"] } },
+      { "method": "lithe/host/agents/didDecidePermission", "params": { "session": "agent-1", "turn": 1, "permission": "permission-1", "option": "allow" } },
+      { "method": "lithe/host/agents/didCancel", "params": { "session": "agent-1", "turn": 1 } },
+      { "method": "lithe/host/agents/didOutput", "params": { "session": "agent-9", "lines": ["never started"] } },
+      { "method": "lithe/host/agents/didExit", "params": { "session": "agent-1", "exitCode": 0 } },
+      { "method": "lithe/host/agents/didExit", "params": { "session": "agent-2" } }
+    ],
+    "calls": {
+      "agent-1": [
+        ["start", { "session": "agent-1", "agentID": "example", "cwd": "/work/orders", "resume": null }],
+        ["output", ["one", "two"]],
+        ["prompt", 1, "hello"],
+        ["output", ["three"]],
+        ["decidePermission", 1, "permission-1", "allow"],
+        ["cancel", 1],
+        ["exited", 0]
+      ],
+      "agent-2": [
+        ["start", { "session": "agent-2", "agentID": "example", "cwd": "/work/orders", "resume": "previous-session" }],
+        ["output", ["other"]],
+        ["exited", null]
+      ]
+    }
+  },
+  "failures": {
+    "notifications": [
+      { "method": "lithe/host/agents/didStart", "params": { "session": "agent-3", "agentID": "example", "cwd": "/work/broken" } },
+      { "method": "lithe/host/agents/didPrompt", "params": { "session": "agent-3", "turn": 1, "text": "hello" } },
+      { "method": "lithe/host/agents/didExit", "params": { "session": "agent-3", "exitCode": 1 } },
+      { "method": "lithe/host/agents/didStart", "params": { "session": "agent-4", "agentID": "example", "cwd": "/work/orders" } },
+      { "method": "lithe/host/agents/didPrompt", "params": { "session": "agent-4", "turn": 1, "text": "fail" } },
+      { "method": "lithe/host/agents/didPrompt", "params": { "session": "agent-4", "turn": 2, "text": "hello" } },
+      { "method": "lithe/host/agents/didExit", "params": { "session": "agent-4", "exitCode": 0 } }
+    ],
+    "reports": [
+      { "session": "agent-3", "events": [{ "kind": "turnEnded", "turn": 1, "reason": "failed" }] },
+      { "session": "agent-4", "events": [{ "kind": "turnEnded", "turn": 1, "reason": "failed" }] }
+    ],
+    "calls": {
+      "agent-4": [
+        ["start", { "session": "agent-4", "agentID": "example", "cwd": "/work/orders", "resume": null }],
+        ["prompt", 1, "fail"],
+        ["prompt", 2, "hello"],
+        ["exited", 0]
+      ]
+    }
+  },
+  "methods": [
+    {
+      "call": "write",
+      "session": "agent-1",
+      "lines": ["{\"type\":\"user\",\"message\":\"hello\"}"],
+      "request": { "method": "lithe/host/agents/write", "params": { "session": "agent-1", "lines": ["{\"type\":\"user\",\"message\":\"hello\"}"] } }
+    },
+    {
+      "call": "report",
+      "session": "agent-1",
+      "events": [
+        { "kind": "session", "agentSessionID": "cli-session-1", "model": "example-model" },
+        { "kind": "message", "turn": 1, "role": "assistant", "messageID": "m1", "text": "Hi", "delta": false }
+      ],
+      "request": {
+        "method": "lithe/host/agents/report",
+        "params": {
+          "session": "agent-1",
+          "events": [
+            { "kind": "session", "agentSessionID": "cli-session-1", "model": "example-model" },
+            { "kind": "message", "turn": 1, "role": "assistant", "messageID": "m1", "text": "Hi", "delta": false }
+          ]
+        }
+      }
+    },
+    {
+      "call": "usage",
+      "params": { "groupBy": "day", "sinceMs": 1764460800000, "utcOffsetSeconds": 28800 },
+      "request": { "method": "lithe/host/agents/usage", "params": { "groupBy": "day", "sinceMs": 1764460800000, "utcOffsetSeconds": 28800 } }
+    }
+  ]
+}
